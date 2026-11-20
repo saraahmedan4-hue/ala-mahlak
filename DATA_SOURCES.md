@@ -3,8 +3,7 @@
 | المصدر | وش أخذنا منه | الرخصة |
 |---|---|---|
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | أسماء الأماكن الخمسة وإحداثياتها (عن طريق Nominatim) | ODbL 1.0, © OpenStreetMap contributors |
-| [OpenFreeMap](https://openfreemap.org) | بلاطات الخريطة (vector tiles)، بدون مفتاح | بيانات OSM (ODbL) + مخطط OpenMapTiles |
-| [MapLibre GL JS](https://maplibre.org) 4.7.1 | عرض الخريطة (مضمّن في `vendor/`) | BSD-3-Clause |
+| [OpenFreeMap](https://openfreemap.org) | بلاطات منطقة العرض (z13)، حوّلناها لخريطة SVG مضمّنة في `js/map-data.js` | بيانات OSM (ODbL) + مخطط OpenMapTiles |
 | [Readex Pro](https://fonts.google.com/specimen/Readex+Pro) | الخط | SIL Open Font License 1.1 |
 
 ## عناصر OSM المستخدمة
@@ -21,4 +20,4 @@
 
 ما استخدمنا أي بيانات أو صور أو شعار من تطبيق هدهد. «ربط مقترح» في الخريطة فكرة للمرحلة الثانية بس.
 
-جمل الوكلاء مكتوبة مسبقاً (نسخة احتياطية جاهزة)، عشان الموقع يشتغل بدون مفتاح نموذج لغوي وبدون نت للنموذج وقت التحكيم.
+جمل الذكاء الاصطناعي (✦) مكتوبة مسبقاً (نسخة احتياطية جاهزة)، عشان الموقع يشتغل بدون مفتاح نموذج لغوي وبدون نت للنموذج وقت التحكيم.

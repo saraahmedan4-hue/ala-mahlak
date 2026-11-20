@@ -3,442 +3,359 @@
   const D = window.SEED, I = window.I18N;
   const $ = (s, r = document) => r.querySelector(s);
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* الحالة داخل الصفحة نفسها */
+  /* الحالة داخل الصفحة نفسها (مشتركة بين الواجهتين) */
   const S = {
-    lang: 'ar', theme: 'dark',
-    reports: clone(D.reports),
-    altRoutes: D.altRoutesToday,
-    agents: { plan: 'plan_idle', comp: 'comp_idle', rep: 'rep_idle' },
-    phone: false, step: 1, rated: false, timers: [],
-    modes: { map: true, sound: false, vib: true }
+    lang: 'ar', theme: 'dark', view: 'home',
+    reports: clone(D.reports), altRoutes: D.altRoutesToday, mergeShown: false, liveNew: false,
+    modes: { map: true, sound: false, vib: true },
+    u: { mode: 'search', dest: null, step: 0, q: '', rated: false, sent: false },
+    timers: [], open: {}
   };
-
-  const t = (k, v) => {
-    let s = (I[S.lang][k] ?? I.ar[k] ?? k);
-    if (v) for (const n in v) s = s.replace('{' + n + '}', v[n]);
-    return s;
-  };
+  const t = (k, v) => { let s = I[S.lang][k] ?? I.ar[k] ?? k; if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
   const L = (o) => (o && (o[S.lang] || o.ar)) || '';
   const icon = (id, cls = 'ic') => `<svg class="${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
   const place = (id) => D.places.find((p) => p.id === id);
+  const spark = (txt, cls = '') => `<div class="ai ${cls}">${icon('i-spark', 'ic ai-ic')}<span>${txt}</span></div>`;
 
-  /* ===== درجة الموثوقية: قواعد واضحة ===== */
+  /* ===== الموثوقية: قواعد واضحة ===== */
   function penalty(r) {
-    const high = r.severity === 'high';
-    let p = 0;
+    const high = r.severity === 'high'; let p = 0;
     if (r.status === 'confirmed' || r.status === 'forwarded') p = high ? 3 : 2;
     else if (r.status === 'pending') p = high ? 1.5 : 1;
     else if (r.status === 'temporary') p = 1;
     return p + Math.max(0, (r.merged || 1) - 1) * 0.5;
   }
   function score(pid) {
-    const pl = place(pid);
-    let s = 10 - Math.min(2, pl.faults90 * 0.3);
-    S.reports.filter((r) => r.place === pid).forEach((r) => { s -= penalty(r); });
+    let s = 10 - Math.min(2, place(pid).faults90 * 0.3);
+    S.reports.forEach((r) => { if (r.place === pid) s -= penalty(r); });
     return Math.max(0, Math.round(s * 10) / 10);
   }
   const level = (s) => (s >= 7 ? 'high' : s >= 4 ? 'medium' : 'low');
-  function reason(pid) {
-    const rs = S.reports.filter((r) => r.place === pid).sort((a, b) => penalty(b) - penalty(a));
-    if (!rs.length) return t('reasonNone');
-    return t('reasonFrom', { t: L(rs[0].title), s: statusWord(rs[0]) });
+  const dots = (lv) => { const n = lv === 'high' ? 3 : lv === 'medium' ? 2 : 1; return `<span class="dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; };
+  const levelChip = (pid, long) => { const lv = level(score(pid)); return `<span class="level ${lv}">${dots(lv)}${t((long ? 'lvl_' : 'lvlS_') + lv)}</span>`; };
+  const FEATS = ['elevator', 'ramp', 'entrance', 'toilet', 'parking'];
+  const issueFeat = { elevator: 'elevator', ramp: 'ramp', door: 'entrance' };
+  function feat(pid, f) {
+    const base = place(pid).feats[f]; if (base === 'none') return 'none';
+    return S.reports.some((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded') ? 'down' : base;
   }
-  function levelChip(s) {
-    const lv = level(s), n = lv === 'high' ? 3 : lv === 'medium' ? 2 : 1;
-    const dots = [0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
-    return `<span class="level ${lv}"><span class="dots" aria-hidden="true">${dots}</span>${t('lvl_' + lv)}</span>`;
-  }
-  function statusWord(r) {
-    return r.status === 'forwarded' ? t('st_forwarded', { a: L(D.authorities[r.authority]) }) : t('st_' + r.status);
-  }
+  const featMark = { ok: '✓', down: '✕', none: '–' };
 
-  /* ===== نصوص ثابتة ===== */
+  /* ===== عام ===== */
   function renderStatic() {
-    document.documentElement.lang = S.lang;
-    document.documentElement.dir = S.lang === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.dataset.theme = S.theme;
+    const h = document.documentElement;
+    h.lang = S.lang; h.dir = S.lang === 'ar' ? 'rtl' : 'ltr'; h.dataset.theme = S.theme;
     document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
-    const lb = $('#langBtn'); lb.textContent = t('langBtn'); lb.lang = S.lang === 'ar' ? 'en' : 'ar';
-    $('#themeLabel').textContent = S.theme === 'dark' ? t('themeLight') : t('themeDark');
-    $('#map').setAttribute('aria-label', t('mapTitle'));
+    document.querySelectorAll('[data-act=lang]').forEach((b) => { b.textContent = t('langBtn'); b.setAttribute('aria-label', t('langName')); b.lang = S.lang === 'ar' ? 'en' : 'ar'; });
+    document.querySelectorAll('[data-act=theme]').forEach((b) => b.setAttribute('aria-label', t('theme')));
+    $('#switchLabel').textContent = S.view === 'gov' ? t('viewUser') : t('viewGov');
   }
+  function toast(msg) {
+    const el = $('#toast'); el.innerHTML = icon('i-check') + `<span>${msg}</span>`; el.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+  let lastFocus = null;
+  function openSheet(html) { lastFocus = document.activeElement; $('#sheetBody').innerHTML = html; $('#sheet').hidden = false; const f = $('#sheetBody button'); f && f.focus(); }
+  function closeSheet() { $('#sheet').hidden = true; lastFocus && lastFocus.focus && lastFocus.focus(); }
 
-  /* ===== الأرقام ===== */
-  function renderKPIs() {
-    $('#kpiReports').textContent = S.reports.length;
-    $('#kpiAlt').textContent = S.altRoutes;
-    const worst = D.places.map((p) => ({ p, s: score(p.id) })).sort((a, b) => a.s - b.s)[0];
-    $('#kpiWorst').textContent = L(worst.p.name);
-    $('#kpiWorstNote').textContent = `${t('kpiWorstNote')}: ${worst.s.toFixed(1)}/10`;
-  }
-  function bump(id) {
-    const el = $(id).closest('.kpi'); el.classList.add('bump');
-    setTimeout(() => el.classList.remove('bump'), 2500);
-  }
-
-  /* ===== قائمة الأماكن ===== */
-  function renderPlaces() {
-    $('#placeList').innerHTML = D.places.map((p) => {
-      const s = score(p.id);
-      return `<li class="place" id="pl-${p.id}">
-        ${levelChip(s)}
-        <div><div class="place-name">${L(p.name)}</div><div class="place-reason">${reason(p.id)}</div></div>
-        <div class="score">${s.toFixed(1)}<small>/10</small></div></li>`;
-    }).join('');
-  }
-  function flashPlace(id) {
-    const el = $('#pl-' + id); if (!el) return;
-    el.classList.add('flash'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    setTimeout(() => el.classList.remove('flash'), 2000);
-  }
-
-  /* ===== البلاغات ===== */
-  const stChip = {
-    confirmed: ['warn', 'i-stop'], pending: ['muted', 'i-clock'], temporary: ['info', 'i-hourglass'], forwarded: ['ok', 'i-check']
-  };
-  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door' };
-  function renderReports() {
-    const sev = { high: 0, medium: 1 };
-    const list = S.reports.slice().sort((a, b) => (sev[a.severity] - sev[b.severity]) || (b.live ? 1 : 0) - (a.live ? 1 : 0) || b.time.localeCompare(a.time));
-    $('#reports').innerHTML = list.map((r) => {
-      const [tone, ic] = stChip[r.status];
-      const canApprove = r.status === 'pending' || r.status === 'temporary';
-      const canForward = r.status !== 'forwarded';
-      return `<li class="report${r.live && r.fresh ? ' is-new fade-in' : ''}">
-        <div class="report-top">
-          <span class="report-ic">${icon(issueIc[r.issue])}</span>
-          <div style="flex:1;min-width:0">
-            <div class="report-title">${L(r.title)}</div>
-            <div class="report-meta"><span>${icon('i-pin', 'ic')} ${L(place(r.place).name)}</span><span>${t('issue_' + r.issue)}</span><span>${r.time}</span></div>
-          </div>
-        </div>
-        <div class="chips">
-          ${r.live && r.fresh ? `<span class="chip new">${t('newBadge')}</span>` : ''}
-          <span class="chip ${tone}">${icon(ic)}${statusWord(r)}</span>
-          <span class="chip ${r.severity === 'high' ? 'warn' : 'muted'}">${t('sev_' + r.severity)}</span>
-          ${r.merged > 1 ? `<span class="chip info">${icon('i-branch')}${r.merged === 2 ? t('merged') : t('mergedN', { n: r.merged })}</span>` : ''}
-        </div>
-        ${r.status === 'temporary' ? `<div class="muted">${t('expires', { h: r.expires })}</div>` : ''}
-        <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
-        ${r.draft ? `<div class="draft"><b>${t('draftLabel')}</b>${L(r.draft)}</div>` : ''}
-        <div class="report-actions">
-          <span class="authority">${t('suggested')}: <b>${L(D.authorities[r.authority])}</b></span>
-          <span style="flex:1"></span>
-          ${canApprove ? `<button class="btn btn-primary btn-sm" data-act="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}
-          ${canForward ? `<button class="btn btn-ghost btn-sm" data-act="forward" data-id="${r.id}" type="button">${icon('i-send', 'ic flip')}${t('forward')}</button>` : ''}
-        </div></li>`;
-    }).join('');
-  }
-  $('#reports').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-act]'); if (!b) return;
-    const r = S.reports.find((x) => x.id === b.dataset.id); if (!r) return;
-    r.fresh = false;
-    if (b.dataset.act === 'approve') {
-      r.status = 'confirmed';
-      setAgent('rep', 'rep_approved'); setAgent('plan', 'plan_update');
-    } else {
-      r.status = 'forwarded';
-      setAgent('rep', 'rep_forwarded');
-    }
-    refreshBoard(); flashPlace(r.place);
-  });
-
-  /* ===== الوكلاء ===== */
-  const agentDefs = [
-    { k: 'plan', ic: 'i-map' }, { k: 'comp', ic: 'i-wheel' }, { k: 'rep', ic: 'i-flag' }
-  ];
-  function renderAgents() {
-    $('#agents').innerHTML = agentDefs.map((a) => `<div class="agent" id="ag-${a.k}">
-      <div class="agent-head"><span class="agent-ic">${icon(a.ic)}</span>
-        <div><div class="agent-name">${t('ag_' + a.k)}</div><div class="agent-when">${t('ag_' + a.k + '_when')}</div></div></div>
-      <div class="agent-now">${t('nowDid')}:</div>
-      <div class="agent-did">«${t(S.agents[a.k])}»</div></div>`).join('');
-  }
-  function setAgent(k, key) {
-    S.agents[k] = key; renderAgents();
-    const el = $('#ag-' + k); el.classList.add('pulse');
-    setTimeout(() => el && el.classList.remove('pulse'), 2500);
-  }
-
-  /* ===== الخريطة ===== */
-  let map = null, markers = {}, fallback = false;
-  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  function mapStyle() {
-    return {
-      version: 8,
-      sources: { omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } },
-      layers: [
-        { id: 'bg', type: 'background', paint: { 'background-color': css('--map-land') } },
-        { id: 'park', type: 'fill', source: 'omt', 'source-layer': 'park', paint: { 'fill-color': css('--map-bg'), 'fill-opacity': 0.6 } },
-        { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': css('--map-water') } },
-        { id: 'bld', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 13, paint: { 'fill-color': css('--map-bg'), 'fill-opacity': 0.7 } },
-        { id: 'minor', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['in', 'class', 'minor', 'service', 'tertiary'],
-          paint: { 'line-color': css('--map-road'), 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 15, 3] } },
-        { id: 'major', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['in', 'class', 'primary', 'secondary', 'trunk', 'motorway'],
-          paint: { 'line-color': css('--map-major'), 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1, 15, 7] } },
-        { id: 'rail', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['in', 'class', 'rail', 'transit'],
-          paint: { 'line-color': css('--map-rail'), 'line-width': 1.5, 'line-dasharray': [3, 2] } }
-      ]
-    };
-  }
-  function markerEl(p) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'marker';
-    b.addEventListener('click', () => flashPlace(p.id));
-    return b;
-  }
-  function paintMarker(el, p) {
-    const s = score(p.id);
-    const [dx, dy] = OFFS[p.id] || [0, -34];
-    el.classList.remove('high', 'medium', 'low'); el.classList.add(level(s));
-    el.innerHTML = `<span class="marker-pin"></span><span class="marker-bubble" style="--dx:${dx}px;--dy:${dy}px"><span class="marker-dot ${level(s)}"><span>${s.toFixed(1)}</span></span><span class="marker-name">${L(p.name)}</span></span>`;
-    el.setAttribute('aria-label', `${L(p.name)}: ${s.toFixed(1)}/10, ${t('lvl_' + level(s))}`);
-  }
-  /* إزاحة الفقاعة عن النقطة عشان الأماكن القريبة ما تتغطى */
-  const OFFS = { pnu: [0, -34], museum: [0, -34], kafd: [86, -30], rpark: [40, 36], blvd: [-96, -28] };
-  function renderMarkers() { D.places.forEach((p) => markers[p.id] && paintMarker(markers[p.id], p)); }
-
-  function initMap() {
-    const box = $('#map');
-    let loaded = false;
-    try {
-      map = new maplibregl.Map({
-        container: box, style: mapStyle(), attributionControl: false,
-        bounds: [[46.585, 24.635], [46.735, 24.865]], fitBoundsOptions: { padding: 50 },
-        dragRotate: false, pitchWithRotate: false, cooperativeGestures: true
-      });
-      map.addControl(new maplibregl.AttributionControl({ compact: true }));
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-      const fit = () => map.fitBounds([[46.585, 24.635], [46.735, 24.865]], { padding: 50, duration: 0 });
-      map.on('load', () => { loaded = true; map.resize(); fit(); });
-      if ('ResizeObserver' in window) new ResizeObserver(() => { if (map) { map.resize(); fit(); } }).observe(box);
-      D.places.forEach((p) => {
-        const el = markerEl(p); markers[p.id] = el; paintMarker(el, p);
-        new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([p.lng, p.lat]).addTo(map);
-      });
-      setTimeout(() => { if (!loaded) useFallback(); }, 12000);
-    } catch (e) { useFallback(); }
-  }
-  function useFallback() {
-    if (fallback) return; fallback = true;
-    try { map && map.remove(); } catch (e) { /* ignore */ }
-    map = null; markers = {};
-    const box = $('#map'); box.innerHTML = '';
-    const w = document.createElement('div'); w.className = 'map-fallback';
-    const [x0, x1, y0, y1] = [46.585, 46.735, 24.635, 24.865];
-    D.places.forEach((p) => {
-      const el = markerEl(p); markers[p.id] = el; paintMarker(el, p);
-      el.style.left = ((p.lng - x0) / (x1 - x0) * 100) + '%';
-      el.style.top = ((y1 - p.lat) / (y1 - y0) * 100) + '%';
-      w.appendChild(el);
-    });
-    const note = document.createElement('p'); note.dataset.i18n = 'mapFallback'; note.textContent = t('mapFallback');
-    w.appendChild(note); box.appendChild(w);
-  }
-
-  function refreshBoard() { renderKPIs(); renderPlaces(); renderReports(); renderMarkers(); }
-
-  /* ===== الاهتزاز والصوت ===== */
-  const VIB = {
-    blocked: [120, 80, 120, 80, 120], notready: [700], right: [150, 100, 150], left: [150, 100, 450],
-    lift: [450, 100, 150], next: [80, 60, 80, 60, 80, 60, 80], arrive: [400, 150, 400]
-  };
-  let vibTimers = [];
-  function buzz(kind) {
-    const pat = VIB[kind];
-    if (S.modes.vib && navigator.vibrate) { try { navigator.vibrate(pat); } catch (e) { /* ignore */ } }
-    const bar = $('#vibBar');
-    bar.hidden = !S.modes.vib;
-    S.lastVib = kind; $('#vibLabel').textContent = t('vib_' + kind);
-    const pulses = pat.filter((_, i) => i % 2 === 0);
-    $('#vibPulses').innerHTML = pulses.map((ms) => `<i style="width:${Math.max(8, ms / 14)}px"></i>`).join('');
-    vibTimers.forEach(clearTimeout); vibTimers = [];
-    const els = $('#vibPulses').children;
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) { [...els].forEach((e) => e.classList.add('on')); return; }
-    let at = 0;
-    pat.forEach((ms, i) => {
-      if (i % 2 === 0) {
-        const el = els[i / 2];
-        vibTimers.push(setTimeout(() => el.classList.add('on'), at));
-        vibTimers.push(setTimeout(() => el.classList.remove('on'), at + ms));
-      }
-      at += ms;
-    });
-    vibTimers.push(setTimeout(() => [...els].forEach((e) => e.classList.add('on')), at + 100));
+  /* الاهتزاز والصوت */
+  const VIB = { blocked: [120, 80, 120, 80, 120], notready: [700], right: [150, 100, 150], left: [150, 100, 450], lift: [450, 100, 150], next: [80, 60, 80, 60, 80, 60, 80], arrive: [400, 150, 400] };
+  const pulses = (k) => VIB[k].filter((_, i) => i % 2 === 0).map((ms) => `<i style="width:${Math.max(8, ms / 14)}px"></i>`).join('');
+  function buzz(k) {
+    S.lastVib = k;
+    if (S.modes.vib && navigator.vibrate) { try { navigator.vibrate(VIB[k]); } catch (e) { /* ignore */ } }
+    const bar = $('#vibBar'); if (!bar) return;
+    bar.hidden = !S.modes.vib; bar.querySelector('.vib-p').innerHTML = pulses(k); bar.querySelector('.vib-l').textContent = t('vib_' + k);
+    const els = [...bar.querySelectorAll('.vib-p i')];
+    if (reduce()) { els.forEach((e) => e.classList.add('on')); return; }
+    let at = 0; VIB[k].forEach((ms, i) => { if (i % 2 === 0) { const e = els[i / 2]; setTimeout(() => e.classList.add('on'), at); setTimeout(() => e.classList.remove('on'), at + ms); } at += ms; });
   }
   function say(text) {
     if (!S.modes.sound || !('speechSynthesis' in window)) return;
-    try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text); u.lang = S.lang === 'ar' ? 'ar-SA' : 'en-US'; u.rate = 0.9;
-      speechSynthesis.speak(u);
-    } catch (e) { /* ignore */ }
+    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = S.lang === 'ar' ? 'ar-SA' : 'en-US'; u.rate = 0.9; speechSynthesis.speak(u); } catch (e) { /* ignore */ }
   }
 
-  /* ===== التطبيق: الرحلة الذهبية ===== */
-  const head = (n) => `<div class="scr-step"><span>${t('step', { n })}</span><span class="progress" aria-hidden="true">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span></div>`;
-  const comp = (txt) => `<div class="companion"><svg class="mark" aria-hidden="true"><use href="#logo"/></svg><div>${txt}</div></div>`;
-  const modeBtn = (k, ic) => `<button class="mode" type="button" data-mode="${k}" aria-pressed="${S.modes[k]}">${icon('i-check', 'tick')}${icon(ic)}<span>${t('mode_' + k)}</span><span class="on-word">${t('active')}</span></button>`;
+  /* ===== التنقل بين الواجهات ===== */
+  let userMap = null, govMap = null;
+  function setView(v) {
+    S.view = v; document.body.dataset.view = v; renderStatic(); window.scrollTo(0, 0);
+    if (v === 'user') {
+      if (!userMap) userMap = MapView($('#userMap'), { pad: userPad });
+      renderUser(true);
+    } else if (v === 'gov') {
+      if (!govMap) govMap = MapView($('#govMap'), { pad: () => ({ t: 90, r: 110, b: 70, l: 110 }) });
+      renderGov(true);
+    }
+    const h = document.querySelector(v === 'home' ? '#homeName' : v === 'user' ? '#panel h1' : '#gov h1');
+    if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+  }
+  function userPad() {
+    const wide = matchMedia('(min-width: 900px)').matches, p = $('#panel');
+    if (wide) { const w = p.offsetWidth + 40; return S.lang === 'ar' ? { t: 90, r: w + 40, b: 90, l: 110 } : { t: 90, r: 110, b: 90, l: w + 40 }; }
+    return { t: 50, r: 60, b: 60, l: 60 };
+  }
 
-  const screens = {
-    1: () => `${head(1)}
-      <h2 class="scr-title">${t('where')}</h2>
-      <div class="p-card"><div class="od"><span>${t('from')}</span><b>${L(place('pnu').name)}</b><span>${t('to')}</span><b>${L(place('kafd').name)}</b></div></div>
-      <div class="p-card">
-        <div class="chips"><span class="chip ok">${icon('i-check')}${t('stepFree')}</span>${levelChip((score('pnu') + score('kafd')) / 2)}</div>
-        <div class="p-row">${icon('i-elevator')}<span>${t('liftEntrances')}</span></div>
-        <div class="p-row">${icon('i-clock')}<b>${t('duration')}</b><span class="muted">· ${t('metroLine')}</span></div>
-        <p class="reason">${t('reasonRoute')}</p>
-      </div>
-      ${comp(t('planLine'))}
-      <div><div class="muted" style="margin-bottom:6px">${t('modesTitle')}</div>
-        <div class="modes">${modeBtn('map', 'i-map')}${modeBtn('sound', 'i-sound')}${modeBtn('vib', 'i-vib')}</div></div>
-      <div class="actions">
-        <button class="btn btn-primary btn-block" data-go="start" type="button">${t('start')}${icon('i-arrow', 'ic flip')}</button>
-        <button class="btn btn-ghost btn-block" data-go="help" type="button">${icon('i-help')}${t('help')}</button>
-      </div>`,
-    2: () => `${head(2)}
-      ${S.modes.map ? `<div class="big-ic info">${icon('i-metro')}</div>` : ''}
-      <p class="instruction">${t('ride')}</p>
-      <p>${t('rideSub')}</p>
-      <div class="line-stops" aria-hidden="true"><span>${L(place('pnu').name)}</span><span class="seg on"></span><span class="seg"></span><span>KAFD</span></div>
-      <p class="muted">${t('stops')}</p>
-      <div class="p-card fade-in" id="announce" hidden><div class="p-row">${icon('i-sound')}<b>${t('announce')}</b></div><p>${t('announceText')}</p></div>`,
-    3: () => `${head(3)}
-      <div class="chips"><span class="chip warn">${icon('i-stop')}${t('st_stopped')} ✕</span></div>
-      ${S.modes.map ? `<div class="big-ic warn">${icon('i-elevator')}</div>` : ''}
-      ${comp(`<span class="instruction" style="font-size:22px">${t('obstacle')}</span>`)}
-      <div class="p-card alt">
-        <div class="chips"><span class="chip info">${icon('i-branch')}${t('altPlan')}</span></div>
-        <h3>${t('altDesc')}</h3><p>${t('altDir')}</p>
-      </div>
-      <div class="actions"><button class="btn btn-primary btn-block" data-go="take" type="button">${t('takeMe')}${icon('i-arrow', 'ic flip')}</button></div>`,
-    4: () => `${head(4)}
-      ${S.modes.map ? `<div class="big-ic info">${icon('i-flag')}</div>` : ''}
-      <h2 class="scr-title">${t('permQ')}</h2>
-      ${comp(t('permNote'))}
-      <div class="p-card"><div class="kv"><span>${t('permPlace')}</span><b>${t('permPlaceV')}</b><span>${t('permType')}</span><b>${t('permTypeV')}</b></div>
-        <p class="reason">${icon('i-check', 'ic')} ${t('ck_presence')} · ${t('permNo')}</p></div>
-      <div class="actions">
-        <button class="btn btn-primary btn-block" data-go="yes" type="button">${t('yes')}</button>
-        <button class="btn btn-ghost btn-block" data-go="no" type="button">${t('noThanks')}</button>
-      </div>`,
-    5: () => `${head(5)}
-      <div class="big-ic ok">${icon('i-check')}</div>
-      <h2 class="scr-title">${t('arrived')}</h2>
-      ${S.rated ? `${comp(t('thanks'))}<div class="actions"><button class="btn btn-ghost btn-block" data-go="again" type="button">${t('again')}</button></div>`
-        : `<p class="instruction">${t('how')}</p>
-      <div class="rate actions">
-        <button class="btn btn-primary btn-block" data-go="rate" type="button">${t('r_comfy')}</button>
-        <button class="btn btn-ghost btn-block" data-go="rate" type="button">${t('r_ok')}</button>
-        <button class="btn btn-ghost btn-block" data-go="rate" type="button">${t('r_hard')}</button>
-      </div>`}`
-  };
-
+  /* ===== واجهة المستخدم ===== */
   function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; }
-  function renderScreen(focus) {
-    const sc = $('#screen');
-    sc.innerHTML = `<div class="fade-in" style="display:flex;flex-direction:column;gap:16px;flex:1">${screens[S.step]()}</div>`;
-    sc.firstElementChild.style.minHeight = '100%';
-    sc.scrollTop = 0;
-    if (S.step === 2 && S.announced) $('#announce').hidden = false;
-    if (focus) { const h = sc.querySelector('.scr-title, .instruction'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
-  }
-  function go(step) {
-    clearTimers(); S.step = step; renderScreen(true);
-    if (step === 2) {
-      S.announced = false;
-      setAgent('comp', 'comp_ride'); buzz('right'); say(t('ride') + ' ' + t('rideSub'));
-      S.timers.push(setTimeout(() => { S.announced = true; const a = $('#announce'); if (a) a.hidden = false; buzz('next'); say(t('announceText')); }, 2500));
-      S.timers.push(setTimeout(() => go(3), 7000));
+  const later = (fn, ms) => S.timers.push(setTimeout(fn, ms));
+  const featRow = (pid) => `<span class="feats">${FEATS.map((f) => { const s = feat(pid, f); return `<span class="feat ${s}" title="${t('f_' + f)}: ${t('fs_' + s)}">${icon('i-' + f)}<span class="sr">${t('f_' + f)}: ${t('fs_' + s)}</span></span>`; }).join('')}</span>`;
+  const topRow = (back) => `<div class="p-top">${back ? `<button class="icon-btn" data-u="back" type="button" aria-label="${t('back')}">${icon('i-arrow', 'ic flip')}</button>` : '<span></span>'}<span class="p-top-end">${S.u.mode === 'trip' ? `<button class="pill-btn" data-u="help" type="button">${icon('i-help')}<span>${t('help')}</span></button>` : ''}<button class="icon-btn" data-u="settings" type="button" aria-label="${t('settings')}">${icon('i-gear')}</button></span></div>`;
+  const stepper = (n) => `<div class="stepper" aria-label="${t('stepOf', { n })}">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}<span>${t('stepOf', { n })}</span></div>`;
+  const vibBar = `<div class="vib-bar" id="vibBar" hidden>${icon('i-vib')}<span class="vib-p" aria-hidden="true"></span><strong class="vib-l"></strong><button class="link-btn" data-u="vibinfo" type="button">؟</button></div>`;
+
+  function panelHTML() {
+    const u = S.u;
+    if (u.mode === 'search') {
+      const q = u.q.trim().toLowerCase();
+      const list = D.places.filter((p) => p.id !== 'pnu' && (!q || (p.name.ar + p.name.en + p.kind.ar + p.kind.en).toLowerCase().includes(q)));
+      return `${topRow(false)}
+        <h1 class="p-title">${t('where')}</h1>
+        <div class="from"><span class="me-dot"></span>${t('fromYou')}</div>
+        <label class="search">${icon('i-search')}<input id="q" type="search" value="${u.q}" placeholder="${t('search')}" autocomplete="off"></label>
+        <ul class="dest-list">${list.map((p) => `<li><button class="dest" data-dest="${p.id}" type="button">
+          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}</span></span>
+          ${levelChip(p.id)}${featRow(p.id)}${icon('i-chev', 'ic dest-chev flip')}</button></li>`).join('') || `<li class="muted">${t('noResults')}</li>`}</ul>`;
     }
-    if (step === 3) {
-      buzz('blocked'); say(t('obstacle'));
-      S.altRoutes += 1; setAgent('comp', 'comp_reroute'); refreshBoard(); bump('#kpiAlt');
+    const p = place(u.dest), r = D.routes[u.dest];
+    if (u.mode === 'place') {
+      return `${topRow(true)}
+        <h1 class="p-title">${L(p.name)}</h1>
+        <div class="place-sub">${L(p.kind)} ${levelChip(p.id, true)}</div>
+        <section class="block"><h2>${t('readiness')}</h2><ul class="feat-list">${FEATS.map((f) => { const s = feat(p.id, f); return `<li class="${s}">${icon('i-' + f)}<span>${t('f_' + f)}</span><b>${featMark[s]} ${t('fs_' + s)}</b></li>`; }).join('')}</ul></section>
+        <section class="block"><h2>${t('yourRoute')}</h2>
+          <div id="aiLine">${spark(t('thinking'), 'thinking')}</div>
+          <div class="stats" id="stats" hidden>
+            <span>${icon('i-clock')}<b>${t('mins', { n: r.min })}</b></span><span>${icon('i-check')}${t('stepFree')}</span>
+            <span>${icon('i-elevator')}${t('lifts', { n: r.lifts })}</span><span>${icon('i-metro')}${L(r.line)}</span></div>
+        </section>
+        <div class="actions"><button class="btn btn-primary" data-u="start" type="button">${t('start')}${icon('i-arrow', 'ic flip')}</button>
+          <button class="btn btn-ghost" data-u="help" type="button">${icon('i-help')}${t('help')}</button></div>`;
     }
-    if (step === 4) { buzz('left'); setAgent('rep', 'rep_draft'); say(t('permQ') + ' ' + t('permNote')); }
-    if (step === 5) { buzz('arrive'); setAgent('comp', 'comp_arrived'); say(t('arrived') + ' ' + t('how')); }
+    /* الرحلة */
+    const n = u.step;
+    let body = '';
+    if (n === 2) body = `<div class="big-ic">${icon('i-metro')}</div><p class="instruction">${t('ride')}</p><p class="sub">${t('rideSub')}</p>
+      <div class="card-soft" id="announce" hidden>${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText')}</p></div></div>`;
+    if (n === 3) body = `<span class="chip warn">${icon('i-stop')}${t('fs_down')} ✕</span>
+      <p class="instruction">${t('obstacle')}</p>${spark(t('rerouted'))}
+      <div class="card-soft alt">${icon('i-branch')}<p>${t('altDir')}</p></div>
+      <div class="actions"><button class="btn btn-primary" data-u="take" type="button">${t('takeMe')}${icon('i-arrow', 'ic flip')}</button></div>`;
+    if (n === 4) body = `<p class="instruction">${t('permQ')}</p><p class="sub">${t('permNote')}</p>
+      <div class="report-card">${spark(t('drafted'))}<dl><dt>${t('permPlace')}</dt><dd id="tw1"></dd><dt>${t('permType')}</dt><dd id="tw2"></dd></dl></div>
+      <div class="actions"><button class="btn btn-primary" data-u="yes" type="button">${t('yes')}</button><button class="btn btn-ghost" data-u="no" type="button">${t('noThanks')}</button></div>`;
+    if (n === 5) body = `<div class="big-ic ok">${icon('i-check')}</div><p class="instruction">${t('arrived')}</p>` + (u.rated
+      ? `<p class="sub">${t('thanks')}</p><div class="actions"><button class="btn btn-primary" data-u="again" type="button">${t('again')}</button></div>`
+      : `<p class="sub">${t('how')}</p><div class="actions rate">${['r_comfy', 'r_ok', 'r_hard'].map((k) => `<button class="btn btn-ghost" data-u="rate" type="button">${t(k)}</button>`).join('')}</div>`);
+    return `${topRow(n < 5)}${stepper(n)}<div class="trip-dest">${icon('i-flag')}${L(p.name)}</div>${body}${vibBar}`;
   }
+
+  function renderUser(fit) {
+    $('#panel').innerHTML = panelHTML();
+    const q = $('#q'); if (q && S.u.focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    if (S.u.mode === 'trip' && S.u.step === 2 && S.u.announced) $('#announce').hidden = false;
+    if (S.lastVib && S.u.mode === 'trip') { const b = $('#vibBar'); if (b) { b.hidden = !S.modes.vib; b.querySelector('.vib-p').innerHTML = pulses(S.lastVib); b.querySelector('.vib-l').textContent = t('vib_' + S.lastVib); b.querySelectorAll('i').forEach((i) => i.classList.add('on')); } }
+    if (fit) userMapScene();
+  }
+
+  const originMk = () => ({ lat: D.origin.lat, lng: D.origin.lng, cls: 'me', html: '<span class="me-dot"></span>' });
+  const destMk = (p, active) => ({ lat: p.lat, lng: p.lng, cls: 'pin p-' + p.id + ' lab-' + p.lab + ' ' + level(score(p.id)) + (active ? ' active' : ''), label: L(p.name),
+    onClick: S.u.mode === 'search' ? () => pickDest(p.id) : null,
+    html: `<span class="pin-dot">${dots(level(score(p.id)))}</span><span class="pin-name">${L(p.name)}</span>` });
+
+  function userMapScene() {
+    const u = S.u; userMap.clearRoutes();
+    if (u.mode === 'search') {
+      userMap.setMarkers([...D.places.filter((p) => p.id !== 'pnu').map((p) => destMk(p)), originMk()]);
+      userMap.fitLatLng([[D.origin.lat, D.origin.lng], ...D.places.map((p) => [p.lat, p.lng])]);
+      return;
+    }
+    const p = place(u.dest), r = D.routes[u.dest];
+    if (u.mode === 'place') {
+      userMap.setMarkers([destMk(p, true), originMk()]);
+      userMap.fitLatLng(r.pts, 700, 3);
+      thinkAnimation(r);
+      return;
+    }
+    const pts = u.rerouted ? r.pts.slice(0, -1).concat(r.alt) : r.pts;
+    const els = userMap.setMarkers([destMk(p, true), ...(u.step >= 3 && r.obstacle ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), originMk()]);
+    S.meEl = els[els.length - 1];
+    S.routePath = userMap.route(r.pts, u.rerouted ? 'chosen old' : 'chosen');
+    if (u.rerouted) userMap.route(r.alt, 'alt', u.step === 3 ? 900 : 0);
+    if (u.step >= 3 && r.obstacle) { userMap.fitLatLng([[24.7700, 46.6470], [24.7660, 46.6405]], 700, 9); placeMe(S.progress); }
+    else if (u.step === 5) { userMap.fitLatLng([pts[pts.length - 2], pts[pts.length - 1]], 700, 5); placeMe(1); }
+    else { userMap.fitLatLng(pts, 700, 3); placeMe(S.progress || 0); }
+  }
+  function placeMe(f) {
+    if (!S.routePath || !S.meEl) return;
+    const L0 = S.routePath.getTotalLength(), pt = S.routePath.getPointAtLength(L0 * Math.min(1, f));
+    userMap.moveMarker(S.meEl, 0, 0, [pt.x, pt.y]);
+  }
+
+  /* ✦ لحظة التفكير: 3 مسارات، اثنين يبهتون ويبقى الأوثق */
+  function thinkAnimation(r) {
+    clearTimers();
+    const off = (k) => r.pts.map((p, i) => (i === 0 || i === r.pts.length - 1 ? p : [p[0] + k * 0.006 * Math.sin(i), p[1] - k * 0.008 * Math.cos(i * 1.3)]));
+    const c1 = userMap.route(off(1), 'cand', 700), c2 = userMap.route(off(-1), 'cand', 700), c3 = userMap.route(r.pts, 'cand', 700);
+    const done = () => {
+      [c1, c2].forEach((c) => c.classList.add('fade')); c3.classList.add('chosen');
+      const a = $('#aiLine'); if (a) a.innerHTML = spark(`${t('chose')} ${L(r.why)}`, 'done');
+      const s = $('#stats'); if (s) s.hidden = false;
+      S.altRoutes += 0;
+    };
+    if (reduce()) done(); else later(done, 1500);
+  }
+
+  function pickDest(id) { S.u = { ...S.u, mode: 'place', dest: id, focusQ: false }; renderUser(true); focusTitle(); }
+  function focusTitle() { const h = $('#panel .p-title, #panel .instruction'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
+
+  function startTrip() {
+    clearTimers(); const r = D.routes[S.u.dest];
+    Object.assign(S.u, { mode: 'trip', step: 2, rerouted: false, announced: false, rated: false }); S.progress = 0;
+    renderUser(true); focusTitle(); buzz('right'); say(t('ride') + ' ' + t('rideSub'));
+    const end = r.obstacle ? 0.88 : 1, dur = 6500, t0 = performance.now();
+    const tick = (now) => {
+      if (S.u.mode !== 'trip' || S.u.step !== 2) return;
+      S.progress = Math.min(end, ((now - t0) / dur) * end); placeMe(S.progress);
+      if (S.progress < end) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    later(() => { S.u.announced = true; const a = $('#announce'); if (a) a.hidden = false; buzz('next'); say(t('announceText')); }, 2500);
+    later(() => (r.obstacle ? obstacle() : arrive()), dur + 300);
+  }
+  function obstacle() {
+    S.u.step = 3; S.u.rerouted = true; S.altRoutes += 1; renderUser(true); focusTitle();
+    buzz('blocked'); say(t('obstacle'));
+  }
+  function permission() {
+    S.u.step = 4; renderUser(false); focusTitle(); buzz('left'); say(t('permQ') + ' ' + t('permNote'));
+    typeInto($('#tw1'), t('permPlaceV'), 0); typeInto($('#tw2'), t('permTypeV'), t('permPlaceV').length * 28 + 150);
+  }
+  function typeInto(el, text, delay) {
+    if (!el) return; if (reduce()) { el.textContent = text; return; }
+    el.classList.add('typing'); let i = 0;
+    later(function step() { if (!el.isConnected) return; el.textContent = text.slice(0, ++i); if (i < text.length) later(step, 28); else el.classList.remove('typing'); }, delay);
+  }
+  function arrive() { S.u.step = 5; S.progress = 1; renderUser(true); focusTitle(); buzz('arrive'); say(t('arrived') + ' ' + t('how')); }
   function sendReport() {
-    const now = new Date();
-    const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const now = new Date(), time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const ex = S.reports.find((r) => r.id === 'live');
-    if (ex) { ex.merged += 1; ex.fresh = true; ex.time = time; }
-    else S.reports.push(Object.assign(clone(D.journeyReport), { time, fresh: true }));
-    setAgent('rep', 'rep_sent'); refreshBoard(); bump('#kpiReports'); flashPlace('kafd');
-    toast(t('sentToast'));
-  }
-  function toast(msg) {
-    const el = $('#toast'); el.innerHTML = icon('i-check') + msg; el.hidden = false;
-    clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3200);
+    if (ex) { ex.merged += 1; ex.time = time; } else S.reports.push(Object.assign(clone(D.journeyReport), { time }));
+    S.liveNew = true; toast(t('sent'));
   }
 
-  $('#screen').addEventListener('click', (e) => {
-    const m = e.target.closest('[data-mode]');
-    if (m) { const k = m.dataset.mode; S.modes[k] = !S.modes[k]; m.setAttribute('aria-pressed', S.modes[k]); if (k === 'vib' && !S.modes.vib) $('#vibBar').hidden = true; return; }
-    const b = e.target.closest('[data-go]'); if (!b) return;
-    const a = b.dataset.go;
-    if (a === 'start') go(2);
-    else if (a === 'help') openSheet(`<h3 id="sheetTitle">${t('help')}</h3><p>${t('helpText')}</p><button class="btn btn-primary btn-block" data-close type="button">${t('ok')}</button>`);
-    else if (a === 'take') go(4);
-    else if (a === 'yes') { sendReport(); go(5); }
-    else if (a === 'no') { setAgent('rep', 'rep_skip'); go(5); }
-    else if (a === 'rate') { S.rated = true; renderScreen(true); }
-    else if (a === 'again') { S.rated = false; $('#vibBar').hidden = true; setAgent('comp', 'comp_idle'); go(1); }
+  $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
+  $('#panel').addEventListener('click', (e) => {
+    const d = e.target.closest('[data-dest]'); if (d) return pickDest(d.dataset.dest);
+    const b = e.target.closest('[data-u]'); if (!b) return;
+    const a = b.dataset.u;
+    if (a === 'back') { clearTimers(); S.u = { ...S.u, mode: S.u.mode === 'trip' ? 'place' : 'search', focusQ: false }; renderUser(true); focusTitle(); }
+    else if (a === 'start') startTrip();
+    else if (a === 'help') openSheet(`<h2 id="sheetTitle">${t('help')}</h2><p>${t('helpText')}</p><button class="btn btn-primary" data-close type="button">${t('ok')}</button>`);
+    else if (a === 'settings') openSettings();
+    else if (a === 'vibinfo') openVib();
+    else if (a === 'take') permission();
+    else if (a === 'yes') { sendReport(); arrive(); }
+    else if (a === 'no') arrive();
+    else if (a === 'rate') { S.u.rated = true; renderUser(false); focusTitle(); }
+    else if (a === 'again') { S.u = { mode: 'search', dest: null, step: 0, q: '', rated: false }; S.lastVib = null; renderUser(true); focusTitle(); }
   });
-
-  /* ===== الورقة السفلية ===== */
-  let lastFocus = null;
-  function openSheet(html) {
-    lastFocus = document.activeElement;
-    $('#sheetBody').innerHTML = html; $('#sheet').hidden = false;
-    const f = $('#sheetBody').querySelector('button'); f && f.focus();
+  function openSettings() {
+    const mb = (k, ic) => `<button class="mode" type="button" data-mode="${k}" aria-pressed="${S.modes[k]}">${icon('i-check', 'ic tick')}${icon(ic)}<span>${t('mode_' + k)}</span><span class="on-word">${t('active')}</span></button>`;
+    openSheet(`<h2 id="sheetTitle">${t('modesTitle')}</h2><div class="modes">${mb('map', 'i-map')}${mb('sound', 'i-sound')}${mb('vib', 'i-vib')}</div>
+      <button class="link-btn" data-open-vib type="button">${icon('i-vib')}${t('vibList')}</button>
+      <button class="btn btn-primary" data-close type="button">${t('close')}</button>`);
   }
-  function closeSheet() { $('#sheet').hidden = true; lastFocus && lastFocus.focus && lastFocus.focus(); }
+  function openVib() {
+    openSheet(`<h2 id="sheetTitle">${t('vibList')}</h2><ul class="vib-list">${Object.keys(VIB).map((k) => `<li><b>${t('vib_' + k)}</b><span class="vib-p on" aria-hidden="true">${pulses(k)}</span><button class="btn btn-ghost btn-sm" data-try="${k}" type="button">${t('vibTry')}</button></li>`).join('')}</ul>
+      <button class="btn btn-primary" data-close type="button">${t('close')}</button>`);
+  }
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.id === 'sheet' || e.target.closest('[data-close]')) return closeSheet();
-    const tr = e.target.closest('[data-try]'); if (tr) buzz(tr.dataset.try);
+    const m = e.target.closest('[data-mode]'); if (m) { const k = m.dataset.mode; S.modes[k] = !S.modes[k]; m.setAttribute('aria-pressed', S.modes[k]); return; }
+    if (e.target.closest('[data-open-vib]')) return openVib();
+    const tr = e.target.closest('[data-try]'); if (tr && navigator.vibrate) { try { navigator.vibrate(VIB[tr.dataset.try]); } catch (er) { /* ignore */ } tr.closest('li').classList.add('flash'); setTimeout(() => tr.closest('li').classList.remove('flash'), 600); }
+    else if (tr) { tr.closest('li').classList.add('flash'); setTimeout(() => tr.closest('li').classList.remove('flash'), 600); }
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
-  $('#vibWhat').addEventListener('click', () => {
-    openSheet(`<h3 id="sheetTitle">${t('vibList')}</h3>` + Object.keys(VIB).map((k) => {
-      const pulses = VIB[k].filter((_, i) => i % 2 === 0).map((ms) => `<i class="on" style="width:${Math.max(8, ms / 14)}px"></i>`).join('');
-      return `<div class="vib-item"><b>${t('vib_' + k)}</b><span class="vib-pulses" aria-hidden="true">${pulses}</span><button class="btn btn-ghost btn-sm" data-try="${k}" type="button">${t('vibTry')}</button></div>`;
-    }).join('') + `<button class="btn btn-primary btn-block" data-close type="button">${t('close')}</button>`);
-  });
 
-  /* ===== فتح/إغلاق الجوال ===== */
-  function setPhone(open) {
-    S.phone = open;
-    $('#phoneWrap').hidden = !open;
-    $('#layout').classList.toggle('with-phone', open);
-    $('#tryBtn').setAttribute('aria-expanded', open);
-    if (open) {
-      if (S.step === 1) setAgent('plan', 'plan_done');
-      renderScreen(false);
-      const h = $('#screen .scr-title, #screen .instruction'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
-      if (matchMedia('(max-width: 1100px)').matches) document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-      $('#tryBtn').focus();
-    }
+  /* ===== واجهة الهيئة ===== */
+  const stChip = { confirmed: ['warn', 'i-stop'], pending: ['muted', 'i-clock'], temporary: ['info', 'i-hourglass'], forwarded: ['ok', 'i-check'] };
+  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door' };
+  function aiSummary() {
+    const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + (r.merged || 1); });
+    const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
+    const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
+    const lines = [];
+    const live = S.reports.find((r) => r.id === 'live');
+    if (live && live.status === 'pending') lines.push(t('aiNew', { p: L(place(live.place).name) }));
+    lines.push(t('aiTop', { i: t('is_' + top), n: by[top], p: L(worst.name) }));
+    return lines;
   }
-  $('#tryBtn').addEventListener('click', () => setPhone(!S.phone));
-  $('#backBtn').addEventListener('click', () => setPhone(false));
-
-  $('#langBtn').addEventListener('click', () => {
-    S.lang = S.lang === 'ar' ? 'en' : 'ar';
-    renderStatic(); refreshBoard(); renderAgents(); if (S.phone) renderScreen(false);
-    if (S.lastVib) $('#vibLabel').textContent = t('vib_' + S.lastVib);
+  function renderKPIs() {
+    const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
+    $('#kpis').innerHTML = `
+      <div class="kpi"><span>${t('kpiReports')}</span><b>${S.reports.length}</b></div>
+      <div class="kpi"><span>${t('kpiAlt')}</span><b>${S.altRoutes}</b></div>
+      <div class="kpi"><span>${t('kpiWorst')}</span><b class="kpi-place">${L(worst.name)}</b><em>${score(worst.id).toFixed(1)}<small>/10</small></em></div>
+      <div class="kpi ai-card">${icon('i-spark', 'ic ai-ic')}<div><span>${t('aiTitle')}</span>${aiSummary().map((l) => `<p>${l}</p>`).join('')}</div></div>`;
+  }
+  function rowHTML(r, dup) {
+    const [tone, ic] = stChip[r.status], open = S.open[r.id] && !dup;
+    const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
+    const isNew = r.live && S.liveNew;
+    return `<li class="row${isNew ? ' is-new' : ''}${dup ? ' dup' : ''}${open ? ' open' : ''}" data-id="${r.id}">
+      <button class="row-main" type="button" aria-expanded="${!!open}" data-toggle="${r.id}">
+        <span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
+        <span class="row-txt"><b>${L(r.title)}</b><span>${L(place(r.place).name)} · ${r.time}</span></span>
+        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${r.merged > 1 && S.mergeShown ? `<span class="chip info">${icon('i-spark')}${t('merged')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
+      </button>
+      <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${t('forward')}</button>` : ''}</div>
+      ${open ? `<div class="row-more">
+        <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
+        <p><span class="muted">${t('authority')}:</span> <b>${L(D.authorities[r.authority])}</b> · <span class="muted">${t('sev_' + r.severity)}</span></p>
+        ${r.status === 'temporary' ? `<p class="muted">${t('expires', { h: r.expires })}</p>` : ''}
+        ${r.draft ? spark(`<b>${t('draft')}:</b> ${L(r.draft)}`) : ''}</div>` : ''}
+    </li>`;
+  }
+  function renderRows() {
+    const sev = { high: 0, medium: 1 };
+    const list = S.reports.slice().sort((a, b) => (b.live && S.liveNew ? 1 : 0) - (a.live && S.liveNew ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
+    $('#rows').innerHTML = list.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown ? rowHTML(r, true) : '')).join('');
+    $('#repCount').textContent = S.reports.length;
+  }
+  function govMarkers() {
+    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv, label: `${L(p.name)} ${s.toFixed(1)}/10`,
+      html: `<span class="sc">${s.toFixed(1)}</span><span class="pin-name">${L(p.name)}</span>` }; }));
+    $('#legend').innerHTML = ['high', 'medium', 'low'].map((lv) => `<span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>`).join('');
+  }
+  function renderGov(fit) {
+    renderKPIs(); renderRows(); govMarkers();
+    if (fit) govMap.fitLatLng(D.places.map((p) => [p.lat, p.lng]), 0);
+    if (!S.mergeShown) setTimeout(() => {
+      const d = $('#rows .dup'); if (d) d.classList.add('merging');
+      setTimeout(() => { S.mergeShown = true; if (S.view === 'gov') renderRows(); }, reduce() ? 0 : 600);
+    }, 1400);
+  }
+  $('#rows').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-act-r]');
+    if (a) {
+      const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
+      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; if (r.live) S.liveNew = false;
+      renderGov(false); return;
+    }
+    const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
   });
-  $('#themeBtn').addEventListener('click', () => {
-    S.theme = S.theme === 'dark' ? 'light' : 'dark';
-    renderStatic();
-    if (map) map.setStyle(mapStyle());
+
+  /* ===== أزرار عامة ===== */
+  document.addEventListener('click', (e) => {
+    const v = e.target.closest('[data-go-view]'); if (v) return setView(v.dataset.goView);
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'switch') setView(S.view === 'gov' ? 'user' : 'gov');
+    if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
+    if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
   });
 
-  /* بداية */
-  renderStatic(); refreshBoard(); renderAgents(); initMap();
+  renderStatic();
 })();
