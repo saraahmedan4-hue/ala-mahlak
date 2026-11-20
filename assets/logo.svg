@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <title>على مهلك · Ala Mahlak</title>
+  <g stroke="#FF6F59" stroke-width="5">
+    <path d="M30 82 L35 72"/><path d="M42 82 L47 72"/><path d="M54 82 L59 72"/>
+    <path d="M66 82 L71 72"/><path d="M78 82 L83 72"/><path d="M90 82 L95 72"/>
+  </g>
+  <g stroke="#F4F1EC" stroke-width="3.5">
+    <circle cx="70" cy="13" r="7"/>
+    <path d="M67 24 L63 48"/>
+    <path d="M66 30 L58 32 L48 31"/>
+    <path d="M68 29 L76 36 L77 45"/>
+    <path d="M63 48 L56 60 L55 74"/>
+    <path d="M63 48 L71 59 L76 73"/>
+    <path d="M14 86 C9 83 6 90 11 93 L38 106 C48 111 66 110 82 106 L110 100"/>
+    <path d="M14 86 L38 94 C44 96 44 100 38 100 L26 99"/>
+    <path d="M40 94 L108 92"/>
+  </g>
+</svg>
