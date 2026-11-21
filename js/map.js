@@ -15,9 +15,9 @@
         <path class="m-park" d="${M.layers.park}"/><path class="m-water" d="${M.layers.water}"/>
         <path class="m-minor" d="${M.layers.minor}"/><path class="m-mid" d="${M.layers.mid}"/>
         <path class="m-major" d="${M.layers.major}"/><path class="m-rail" d="${M.layers.rail}"/>
-        <g class="mv-static"></g><g class="mv-routes"></g></g></svg>
+        <g class="mv-static"></g><g class="mv-routes"></g></g></svg></div>
       <div class="mv-labels" aria-hidden="true">${(M.labels || []).map((l) => `<span data-x="${l.x}" data-y="${l.y}" data-a="${l.a}" data-ar="${l.ar}" data-en="${l.en}">${l.ar}</span>`).join('')}</div>
-      <div class="mv-markers"></div></div>
+      <div class="mv-markers"></div>
       <div class="mv-ctrl"><button type="button" class="mv-btn" data-z="1" aria-label="+"><svg class="ic"><use href="#i-plus"/></svg></button><button type="button" class="mv-btn" data-z="-1" aria-label="−"><svg class="ic"><use href="#i-dash"/></svg></button></div>
       <span class="mv-attr" lang="en" dir="ltr">© OpenStreetMap</span>`;
     const stage = el.querySelector('.mv-stage'), svg = el.querySelector('svg'), world = el.querySelector('.mv-world');
@@ -26,15 +26,17 @@
     const st = { s: 0.3, tx: 0, ty: 0 }; let markers = []; let lastFit = null; let anim = 0;
     const g = { a: 1, x: 0, y: 0 }; // حركة مؤقتة على الطبقة
     const pad = () => (opts.pad ? opts.pad() : { t: 40, r: 40, b: 40, l: 40 });
-    const place = (m) => { m.el.style.transform = `translate(${m.p[0] * st.s + st.tx}px, ${m.p[1] * st.s + st.ty}px)`; };
+    /* العلامات والأسماء برا الطبقة: تتحرك مع الخريطة بس ما يتغير حجمها أبداً */
+    const eff = () => ({ s: g.a * st.s, x: g.a * st.tx + g.x, y: g.a * st.ty + g.y });
+    const place = (m, e = eff()) => { m.el.style.transform = `translate(${m.p[0] * e.s + e.x}px, ${m.p[1] * e.s + e.y}px)`; };
+    const placeLabels = (e = eff()) => labs.forEach((l) => { l.style.transform = `translate(${l.dataset.x * e.s + e.x}px, ${l.dataset.y * e.s + e.y}px) translate(-50%, -50%) rotate(${l.dataset.a}deg)`; });
 
     function apply() { // رسم ثابت (مرة وحدة بعد كل حركة)
       world.setAttribute('transform', `translate(${st.tx} ${st.ty}) scale(${st.s})`);
       el.classList.toggle('mv-near', st.s > 1.4); el.classList.toggle('mv-names', st.s > 0.55); el.classList.toggle('mv-far', st.s < 0.4);
-      labs.forEach((l) => { l.style.transform = `translate(${l.dataset.x * st.s + st.tx}px, ${l.dataset.y * st.s + st.ty}px) translate(-50%, -50%) rotate(${l.dataset.a}deg)`; });
-      markers.forEach(place);
+      placeLabels(); markers.forEach((m) => place(m));
     }
-    const showGesture = () => { stage.style.transform = `translate(${g.x}px, ${g.y}px) scale(${g.a})`; };
+    const showGesture = () => { stage.style.transform = `translate(${g.x}px, ${g.y}px) scale(${g.a})`; const e = eff(); placeLabels(e); markers.forEach((m) => place(m, e)); };
     function commit() {
       if (g.a === 1 && g.x === 0 && g.y === 0) return;
       st.s *= g.a; st.tx = g.a * st.tx + g.x; st.ty = g.a * st.ty + g.y;

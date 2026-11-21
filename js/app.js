@@ -27,12 +27,21 @@
     else if (r.status === 'temporary') p = 1;
     return p + Math.max(0, (r.merged || 1) - 1) * 0.5;
   }
+  /* الدرجة من جاهزية المكان نفسه: 5 أشياء (مصعد، منحدر، مدخل، دورة مياه، مواقف)، كل وحدة 2 من 10
+     شغال = 2 · عليه بلاغ ينتظر = 1 · عطل مؤكد = 0 · ما فيه أصلاً = 0.6
+     ثم ينقص شوي لتكرار البلاغ (0.3 لكل تكرار) وسجل الأعطال (0.1 لكل عطل، بحد أقصى 0.5) */
   function score(pid) {
-    let s = 10 - Math.min(2, place(pid).faults90 * 0.3) - (place(pid).feats.elevator === 'none' ? 1 : 0); // مكان بدون مصعد ينقص 1
-    S.reports.forEach((r) => { if (r.place === pid) s -= penalty(r); });
-    return Math.max(0, Math.round(s * 10) / 10);
+    let s = 0;
+    FEATS.forEach((f) => {
+      if (place(pid).feats[f] === 'none') { s += 0.6; return; }
+      const rs = S.reports.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
+      s += !rs.length ? 2 : rs.some((r) => r.status === 'confirmed') ? 0 : 1;
+    });
+    S.reports.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
+    s -= Math.min(0.5, place(pid).faults90 * 0.1);
+    return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
   }
-  const level = (s) => (s >= 7 ? 'high' : s >= 4 ? 'medium' : 'low');
+  const level = (s) => (s >= 9 ? 'high' : s >= 4.5 ? 'medium' : 'low'); // عالية = كل شي أخضر
   const dots = (lv) => { const n = lv === 'high' ? 3 : lv === 'medium' ? 2 : 1; return `<span class="dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; };
   const levelChip = (pid, long) => { const lv = level(score(pid)); return `<span class="level ${lv}">${dots(lv)}${t((long ? 'lvl_' : 'lvlS_') + lv)}</span>`; };
   const FEATS = ['elevator', 'ramp', 'entrance', 'toilet', 'parking'];
@@ -239,13 +248,8 @@
     if (rer) userMap.route(r.alt, 'alt', s.k === 'alert' && S.fwd ? 1200 : 0);
     S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
     const n = r.pts.length, endBox = r.demo ? r.pts.slice(n - 3).concat(r.alt) : r.pts.slice(r.alightIdx || n - 2);
-    const zk = u.dest + ':' + s.zoom; // الكاميرا ما تتحرك إلا إذا تغيّر المكان المطلوب
-    if (S.lastZoom === zk) { moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f }); return; }
-    S.lastZoom = zk;
-    if (s.zoom === 'start') userMap.fitLatLng([r.pts[0], r.pts[1]], 700, 7);
-    else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.demo ? 8 : 6);
-    else if (s.zoom === 'near') userMap.fitLatLng(r.pts.slice(n - 2).concat(r.alt, [r.fault]), 700, 14);
-    else userMap.fitLatLng(r.pts, 700, 3);
+    // الكاميرا ثابتة طول الرحلة (نفس إطار صفحة المكان)، والنقطة بس اللي تمشي
+    if (S.lastZoom !== u.dest) { S.lastZoom = u.dest; userMap.fitLatLng(r.pts, 0, 3); }
     moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f });
   }
   /* تحريك نقطتك بهدوء من مكانها للخطوة الجاية */

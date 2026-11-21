@@ -12,20 +12,20 @@ window.SEED = {
       feats: { elevator: 'ok', ramp: 'ok', entrance: 'ok', toilet: 'ok', parking: 'ok' } },
     { id: 'rpark', lab: 's', lat: 24.7569124, lng: 46.6300962, faults90: 6,
       name: { ar: 'الرياض بارك', en: 'Riyadh Park' }, kind: { ar: 'مول', en: 'Mall' },
-      feats: { elevator: 'ok', ramp: 'ok', entrance: 'ok', toilet: 'ok', parking: 'ok' } },
+      feats: { elevator: 'ok', ramp: 'ok', entrance: 'ok', toilet: 'none', parking: 'ok' } },
     { id: 'blvd', lab: 'w', lat: 24.7684171, lng: 46.6044742, faults90: 2,
       name: { ar: 'بوليفارد الرياض', en: 'Boulevard Riyadh' }, kind: { ar: 'ترفيه', en: 'Entertainment' },
       feats: { elevator: 'none', ramp: 'ok', entrance: 'ok', toilet: 'ok', parking: 'ok' } },
     { id: 'museum', lab: 'e', lat: 24.6471421, lng: 46.7107035, faults90: 5,
       name: { ar: 'المتحف الوطني', en: 'National Museum' }, kind: { ar: 'تعليمي', en: 'Education' },
-      feats: { elevator: 'ok', ramp: 'ok', entrance: 'ok', toilet: 'ok', parking: 'none' } }
+      feats: { elevator: 'ok', ramp: 'ok', entrance: 'ok', toilet: 'ok', parking: 'ok' } }
   ],
 
   /* مسارات تجريبية من محطة الجامعة [lat, lng] */
   routes: {
     pnu: { min: 18, station: { ar: 'جامعة الأميرة نورة 1', en: 'Princess Nourah University 1' },  lifts: 2, alightIdx: 3,
       line: { ar: 'المترو · الخط 4', en: 'Metro · Line 4' },
-      why: { ar: 'بوديك للمدخل الجنوبي، لأن الباب الآلي في المدخل الرئيسي ما يفتح.', en: "Taking you to the south entrance, because the main entrance automatic door won't open." },
+      why: { ar: 'المدخل الرئيسي فيه منحدر ومصعد شغالين.', en: 'The main entrance has a working ramp and elevator.' },
       pts: [...HOME, [24.8416, 46.7174], [24.8470, 46.7195], [24.8514, 46.7213]] },
     kafd: { min: 42, station: { ar: 'مركز الملك عبدالله المالي', en: 'King Abdullah Financial District' },  lifts: 2,
       line: { ar: 'المترو · الخط 4', en: 'Metro · Line 4' },
@@ -59,13 +59,13 @@ window.SEED = {
   reports: [
     { id: 'r1', place: 'rpark', issue: 'ramp', severity: 'high', status: 'confirmed', authority: 'sidewalk', time: '08:12', merged: 4,
       title: { ar: 'منحدر البوابة 3 مسدود بسيارة', en: 'Gate 3 ramp blocked by a car' }, checks: ['presence', 'second'] },
-    { id: 'r2', place: 'kafd', issue: 'ramp', severity: 'medium', status: 'pending', authority: 'sidewalk', time: '09:40', merged: 1,
-      title: { ar: 'عوائق على منحدر الممر الجانبي', en: 'Obstacles on the side walkway ramp' }, checks: ['presence'] },
+    { id: 'r2', place: 'rpark', issue: 'door', severity: 'medium', status: 'pending', authority: 'building', time: '09:40', merged: 1,
+      title: { ar: 'المدخل المخصص مقفل', en: 'Accessible entrance locked' }, checks: ['presence'] },
     { id: 'r3', place: 'rpark', issue: 'elevator', severity: 'medium', status: 'pending', authority: 'building', time: '10:05', merged: 2,
       title: { ar: 'مصعد المواقف يتوقف', en: 'Parking elevator keeps stopping' }, checks: ['presence'] },
     { id: 'r4', place: 'blvd', issue: 'ramp', severity: 'medium', status: 'temporary', authority: 'sidewalk', time: '10:30', merged: 3, expires: 6,
       title: { ar: 'حاجز صيانة عند المنحدر', en: 'Maintenance barrier at the ramp' }, checks: ['presence', 'behavior'] },
-    { id: 'r5', place: 'pnu', issue: 'door', severity: 'medium', status: 'pending', authority: 'building', time: '11:18', merged: 1,
+    { id: 'r5', place: 'blvd', issue: 'door', severity: 'medium', status: 'pending', authority: 'building', time: '11:18', merged: 1,
       title: { ar: 'الباب الآلي ما يفتح', en: "Automatic door won't open" }, checks: ['presence'] }
   ],
 
