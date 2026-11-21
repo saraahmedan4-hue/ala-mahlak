@@ -218,7 +218,7 @@
   }
 
   function userMapScene() {
-    const u = S.u; userMap.clearRoutes();
+    const u = S.u; userMap.clearRoutes(); if (u.mode !== 'trip') S.lastZoom = null;
     if (u.mode === 'search') {
       userMap.setMarkers([...D.places.map((p) => destMk(p)), homeMk()]);
       userMap.fitLatLng([[D.origin.lat, D.origin.lng], ...D.places.map((p) => [p.lat, p.lng])]);
@@ -239,6 +239,9 @@
     if (rer) userMap.route(r.alt, 'alt', s.k === 'alert' && S.fwd ? 1200 : 0);
     S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
     const n = r.pts.length, endBox = r.demo ? r.pts.slice(n - 3).concat(r.alt) : r.pts.slice(r.alightIdx || n - 2);
+    const zk = u.dest + ':' + s.zoom; // الكاميرا ما تتحرك إلا إذا تغيّر المكان المطلوب
+    if (S.lastZoom === zk) { moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f }); return; }
+    S.lastZoom = zk;
     if (s.zoom === 'start') userMap.fitLatLng([r.pts[0], r.pts[1]], 700, 7);
     else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.demo ? 8 : 6);
     else if (s.zoom === 'near') userMap.fitLatLng(r.pts.slice(n - 2).concat(r.alt, [r.fault]), 700, 14);
