@@ -28,12 +28,12 @@ window.I18N = {
     modesTitle: 'طريقة التوجيه', mode_map: 'خريطة وخطوات', mode_sound: 'صوت', mode_vib: 'نص واهتزاز', active: 'مُفعّل',
     vibList: 'معاني الاهتزاز', vibTry: 'جرّب',
     vib_blocked: 'طريق مقفل', vib_notready: 'مكان مو مهيأ', vib_right: 'لفّي يمين', vib_left: 'لفّي يسار',
-    vib_lift: 'المصعد قدامك', vib_next: 'انزلي المحطة الجاية', vib_arrive: 'وصلتِ',
+    vib_lift: 'المصعد قدامك', vib_next: 'وقت النزول', vib_arrive: 'وصلتِ',
     /* الهيئة */
     govTitle: 'جاهزية الأماكن', kpiReports: 'بلاغات اليوم', kpiAlt: 'مسارات بديلة', kpiWorst: 'أكثر الأماكن تعطّلاً',
     aiTitle: 'ملخص اليوم', aiTop: 'أعطال {i} الأكثر اليوم ({n}). الأولوية: {p}.', aiNew: 'بلاغ جديد عن {p}، تحققت منه وينتظر موافقتك.',
     aiMerged: 'دمجت بلاغين مكررين', reports: 'البلاغات', places: 'الأماكن',
-    approve: 'موافقة', forwardTo: 'حوّل إلى {a}', newBadge: 'جديد', merged: 'بلّغ عنه شخصين، دمجتهم', mergedN: 'بلّغ عنه {n} أشخاص، دمجتهم',
+    approve: 'موافقة', forwardTo: 'حوّل إلى {a}', newBadge: 'جديد', merged: 'بلّغ عنه شخصين', mergedN: 'بلّغ عنه {n} أشخاص',
     st_confirmed: 'مؤكد', st_pending: 'بانتظار التأكيد', st_temporary: 'عائق مؤقت', st_forwarded: 'حُوّل',
     sev_high: 'عالية', sev_medium: 'متوسطة', expires: 'ينتهي بعد {h} ساعات إذا ما تأكد',
     ck_presence: 'تم التحقق من التواجد', ck_behavior: 'سلوك الرحلة يطابق', ck_log: 'يطابق سجل الأعطال', ck_second: 'تأكيد من مستخدم ثاني',
@@ -44,6 +44,12 @@ window.I18N = {
     s_gates: 'اطلع من بوابات المحطة، والمصعد على يمينك.', s_lift: 'انزل بالمصعد للرصيف 2.', s_ride: 'اركب القطار من الرصيف 2.',
     rideStops: 'باقي 3 محطات. بقولك قبل لا توصل.', s_alight: 'انزل هنا. الأبواب على اليمين.',
     s_detour: 'لفّي يسار عند نهاية الرصيف، والمصعد على يمينك.', s_exit: 'اطلع بالمصعد، والمدخل قدامك.',
+    notePh: 'اكتب وش صار (اختياري)',
+    say_gates: 'اطْلَع من بوّابات المحطّة، والمِصْعَد على يمينك.', say_lift: 'انزِل بالمِصْعَد لرصيف رقم اثنين.',
+    say_ride: 'اركب القطار من رصيف رقم اثنين. باقي ثلاث محطّات، وبقولك قبل لا توصل.', say_alight: 'انزِل هنا. الأبواب على اليمين.',
+    say_obstacle: 'المِصْعَد معطّل الحين. لقيت لك مدخل ثاني فيه مِصْعَد شغّال، يزيد أربع دقايق بس.',
+    say_detour: 'لفّي يسار عند نهاية الرصيف، والمِصْعَد على يمينك.', say_exit: 'اطْلَع بالمِصْعَد، والمدخل قدّامك.',
+    say_perm: 'أرفع بلاغ عن المِصْعَد؟ ما راح أرسل إلا الموقع ونوع العطل.', say_arrive: 'وصلت بالسلامة. كيف كانت رحلتك؟',
     report: 'بلّغ', reportTitle: 'بلّغ عن مشكلة', reportType: 'وش المشكلة؟', reportWhere: 'وين؟', send: 'أرسل', cancel: 'إلغاء'
   },
   en: {
@@ -74,11 +80,11 @@ window.I18N = {
     modesTitle: 'Guidance mode', mode_map: 'Map and steps', mode_sound: 'Sound', mode_vib: 'Text and vibration', active: 'On',
     vibList: 'Vibration meanings', vibTry: 'Try',
     vib_blocked: 'Way blocked', vib_notready: 'Place not accessible', vib_right: 'Turn right', vib_left: 'Turn left',
-    vib_lift: 'Elevator ahead', vib_next: 'Get off at the next stop', vib_arrive: 'You arrived',
+    vib_lift: 'Elevator ahead', vib_next: 'Time to get off', vib_arrive: 'You arrived',
     govTitle: 'Place readiness', kpiReports: "Today's reports", kpiAlt: 'Alternative routes', kpiWorst: 'Most disrupted place',
     aiTitle: "Today's summary", aiTop: '{i} faults lead today ({n}). Priority: {p}.', aiNew: 'New report about {p}, verified and awaiting your approval.',
     aiMerged: 'Merged two duplicate reports', reports: 'Reports', places: 'Places',
-    approve: 'Approve', forwardTo: 'Send to {a}', newBadge: 'New', merged: '2 people reported it, merged', mergedN: '{n} people reported it, merged',
+    approve: 'Approve', forwardTo: 'Send to {a}', newBadge: 'New', merged: 'Reported by 2 people', mergedN: 'Reported by {n} people',
     st_confirmed: 'Confirmed', st_pending: 'Awaiting confirmation', st_temporary: 'Temporary', st_forwarded: 'Forwarded',
     sev_high: 'High', sev_medium: 'Medium', expires: 'Ends in {h} hours if not confirmed',
     ck_presence: 'Presence verified', ck_behavior: 'Trip behaviour matches', ck_log: 'Matches fault log', ck_second: 'Confirmed by a second user',
@@ -89,6 +95,9 @@ window.I18N = {
     s_gates: 'Go through the station gates, the elevator is on your right.', s_lift: 'Take the elevator down to platform 2.', s_ride: 'Take the train from platform 2.',
     rideStops: "3 stops left. I'll tell you before you arrive.", s_alight: 'Get off here. Doors on the right.',
     s_detour: 'Turn left at the end of the platform, the elevator is on your right.', s_exit: 'Take the elevator up, the entrance is in front of you.',
+    notePh: 'Write what happened (optional)',
+    say_ride: "Take the train from platform 2. 3 stops left. I'll tell you before you arrive.", say_obstacle: 'The elevator is out of service right now. I found you another entrance with a working elevator, only 4 minutes more.',
+    say_perm: "Report the elevator? I'll only send the location and the fault type.", say_arrive: 'You arrived safely. How was your trip?',
     report: 'Report', reportTitle: 'Report a problem', reportType: "What's the problem?", reportWhere: 'Where?', send: 'Send', cancel: 'Cancel'
   }
 };

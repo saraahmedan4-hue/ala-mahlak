@@ -72,9 +72,23 @@
     if (reduce()) { els.forEach((e) => e.classList.add('on')); return; }
     let at = 0; VIB[k].forEach((ms, i) => { if (i % 2 === 0) { const e = els[i / 2]; setTimeout(() => e.classList.add('on'), at); setTimeout(() => e.classList.remove('on'), at + ms); } at += ms; });
   }
-  function say(text) {
+  /* يختار أوضح صوت موجود بالجهاز: سعودي أولاً، ثم عربي، والأصوات الطبيعية والرجالية لها أولوية */
+  function pickVoice() {
+    if (!('speechSynthesis' in window)) return null;
+    const ar = S.lang === 'ar', vs = speechSynthesis.getVoices().filter((v) => (v.lang || '').toLowerCase().startsWith(ar ? 'ar' : 'en'));
+    const score = (v) => (/sa/i.test(v.lang) ? 4 : 0) + (/natural|neural|premium|enhanced|online/i.test(v.name) ? 3 : 0) + (/google|microsoft/i.test(v.name) ? 1 : 0)
+      + (/maged|majed|hamed|naayf|tarik|shakir|fahed|male|daniel|guy/i.test(v.name) ? 2 : 0);
+    return vs.sort((a, b) => score(b) - score(a))[0] || null;
+  }
+  if ('speechSynthesis' in window) speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', () => { S.voice = null; });
+  function say(key) {
     if (!S.modes.sound || !('speechSynthesis' in window)) return;
-    try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = S.lang === 'ar' ? 'ar-SA' : 'en-US'; u.rate = 0.9; speechSynthesis.speak(u); } catch (e) { /* ignore */ }
+    const text = I[S.lang]['say_' + key] || t('s_' + key);
+    try {
+      speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text), v = pickVoice();
+      if (v) u.voice = v; u.lang = v ? v.lang : (S.lang === 'ar' ? 'ar-SA' : 'en-US'); u.rate = 0.92; u.pitch = 0.95;
+      speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
   }
 
   /* ===== التنقل بين الواجهات ===== */
@@ -171,18 +185,18 @@
   function tripSteps(dest) {
     const r = D.routes[dest];
     const base = [
-      { k: 'gates', stage: 2, ic: 'i-entrance', f: 0, vib: 'right', zoom: 'start' },
-      { k: 'lift', stage: 2, ic: 'i-elevator', f: 0.03, vib: 'lift', zoom: 'start' },
+      { k: 'gates', stage: 2, ic: 'i-gates', f: 0, vib: 'right', zoom: 'start' },
+      { k: 'lift', stage: 2, ic: 'i-lift-down', f: 0.03, vib: 'lift', zoom: 'start' },
       { k: 'ride', stage: 2, ic: 'i-metro', f: 0.5, zoom: 'all' },
-      { k: 'alight', stage: 2, ic: 'i-metro', f: 0.9, vib: 'next', zoom: 'end' }
+      { k: 'alight', stage: 2, ic: 'i-alight', f: 0.985, vib: 'next', zoom: 'end' }
     ];
     return base.concat(r.obstacle ? [
-      { k: 'obstacle', stage: 3, f: 0.97, vib: 'blocked', zoom: 'end' },
-      { k: 'detour', stage: 3, ic: 'i-branch', alt: true, vib: 'left', zoom: 'end' },
+      { k: 'obstacle', stage: 3, f: 0.995, vib: 'blocked', zoom: 'end' },
+      { k: 'detour', stage: 3, ic: 'i-turn-left', alt: true, vib: 'left', zoom: 'end' },
       { k: 'perm', stage: 4, alt: true, zoom: 'end' },
       { k: 'arrive', stage: 5, alt: true, vib: 'arrive', zoom: 'end' }
     ] : [
-      { k: 'exit', stage: 2, ic: 'i-elevator', f: 1, vib: 'lift', zoom: 'end' },
+      { k: 'exit', stage: 2, ic: 'i-lift-up', f: 1, vib: 'lift', zoom: 'end' },
       { k: 'arrive', stage: 5, f: 1, vib: 'arrive', zoom: 'end' }
     ]);
   }
@@ -261,7 +275,7 @@
     if (s.k === 'obstacle') S.altRoutes += 1;
     if (s.k === 'perm') { typeInto($('#tw1'), t('permPlaceV'), 300); typeInto($('#tw2'), t('permTypeV'), 300 + t('permPlaceV').length * 28 + 150); }
     else if (s.k !== 'perm') { const pv = $('#tw1'); if (pv) pv.textContent = t('permPlaceV'); }
-    say(s.k === 'obstacle' ? t('obstacle') : s.k === 'perm' ? t('permQ') + ' ' + t('permNote') : s.k === 'arrive' ? t('arrived') + ' ' + t('how') : t('s_' + s.k));
+    say(s.k);
   }
   function startTrip() {
     Object.assign(S.u, { mode: 'trip', i: 0, rated: false }); S.meAt = null;
@@ -275,8 +289,8 @@
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
   function addReport(rep) {
-    const ex = S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
-    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; }
+    const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; }
     else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
     toast(t('sent'));
   }
@@ -322,21 +336,24 @@
   function openReport() {
     const u = S.u, steps = u.mode === 'trip' ? tripSteps(u.dest) : null;
     const ctx = u.mode === 'place' || (steps && u.i >= steps.findIndex((x) => x.k === 'alight')) ? u.dest : 'pnu';
-    S.rep = { type: null, place: ctx };
+    S.rep = { type: null, place: ctx, note: '' };
     openSheet(`<h2 id="sheetTitle">${t('reportTitle')}</h2>
+      <textarea id="repNote" class="note" rows="3" placeholder="${t('notePh')}" aria-label="${t('notePh')}"></textarea>
       <div class="block"><h2>${t('reportType')}</h2><div class="types">${REP_TYPES.map((k) => `<button class="type" type="button" data-rtype="${k}" aria-pressed="false">${icon(issueIc[k])}<span>${t('issue_' + k)}</span></button>`).join('')}</div></div>
       <label class="block"><h2>${t('reportWhere')}</h2><select id="repPlace" class="select">${D.places.map((p) => `<option value="${p.id}"${p.id === ctx ? ' selected' : ''}>${L(p.name)}</option>`).join('')}</select></label>
       ${spark(t('permNote'))}
       <div class="sheet-actions"><button class="btn btn-primary" data-send type="button" disabled>${t('send')}</button><button class="btn btn-ghost" data-close type="button">${t('cancel')}</button></div>`);
   }
-  $('#reportFab').addEventListener('click', openReport);
+  $('#reportFab').addEventListener('click', () => { openReport(); const n = $('#repNote'); if (n) n.focus(); });
   $('#sheet').addEventListener('change', (e) => { if (e.target.id === 'repPlace' && S.rep) S.rep.place = e.target.value; });
+  $('#sheet').addEventListener('input', (e) => { if (e.target.id === 'repNote' && S.rep) { S.rep.note = e.target.value.trim(); $('#sheet [data-send]').disabled = !(S.rep.type || S.rep.note); } });
   $('#sheet').addEventListener('click', (e) => {
     const ty = e.target.closest('[data-rtype]');
     if (ty) { S.rep.type = ty.dataset.rtype; $('#sheet').querySelectorAll('[data-rtype]').forEach((b) => b.setAttribute('aria-pressed', b === ty)); $('#sheet [data-send]').disabled = false; return; }
-    if (e.target.closest('[data-send]') && S.rep && S.rep.type) {
-      const k = S.rep.type;
-      addReport({ place: S.rep.place, issue: k, severity: k === 'elevator' || k === 'ramp' ? 'high' : 'medium', authority: REP_AUTH[k], title: { ar: I.ar['issue_' + k], en: I.en['issue_' + k] } });
+    if (e.target.closest('[data-send]') && S.rep && (S.rep.type || S.rep.note)) {
+      const k = S.rep.type || 'other', note = S.rep.note;
+      addReport({ place: S.rep.place, issue: k, severity: k === 'elevator' || k === 'ramp' ? 'high' : 'medium', authority: REP_AUTH[k], note,
+        title: k === 'other' && note ? { ar: note.slice(0, 60), en: note.slice(0, 60) } : { ar: I.ar['issue_' + k], en: I.en['issue_' + k] } });
       S.rep = null; closeSheet();
       if (S.u.mode !== 'trip') renderUser(true);
     }
@@ -344,7 +361,7 @@
 
   /* ===== واجهة الهيئة ===== */
   const stChip = { confirmed: ['warn', 'i-stop'], pending: ['muted', 'i-clock'], temporary: ['info', 'i-hourglass'], forwarded: ['ok', 'i-check'] };
-  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door', other: 'i-flag' };
+  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door', other: 'i-more' };
   function aiSummary() {
     const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + (r.merged || 1); });
     const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
@@ -378,7 +395,7 @@
         <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
         <p><span class="muted">${t('authority')}:</span> <b>${L(D.authorities[r.authority])}</b> · <span class="muted">${t('sev_' + r.severity)}</span></p>
         ${r.status === 'temporary' ? `<p class="muted">${t('expires', { h: r.expires })}</p>` : ''}
-        ${r.draft ? spark(`<b>${t('draft')}:</b> ${L(r.draft)}`) : ''}</div>` : ''}
+        ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}${r.draft ? spark(`<b>${t('draft')}:</b> ${L(r.draft)}`) : ''}</div>` : ''}
     </li>`;
   }
   function renderRows() {
