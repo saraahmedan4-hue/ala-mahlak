@@ -1,7 +1,7 @@
 window.I18N = {
   ar: {
     appName: 'على مهلك', tagline: 'رحلة بدون مفاجآت، وبدون استعجال.', langBtn: 'EN', langName: 'English',
-    pickUser: 'أنا مستخدم', pickUserSub: 'خطط رحلتك وامشِ بثقة', pickGov: 'أنا من الهيئة', pickGovSub: 'تابع جاهزية الأماكن والبلاغات',
+    pickUser: 'أنا مستخدم', pickUserSub: 'خطط رحلتك وامشِ بثقة', pickGov: 'أنا من الهيئة الملكية لمدينة الرياض', pickGovSub: 'تابع جاهزية الأماكن والبلاغات',
     switchView: 'تبديل الواجهة', theme: 'تبديل المظهر', settings: 'الإعدادات', back: 'رجوع', close: 'إغلاق',
     viewUser: 'المستخدم', viewGov: 'الهيئة',
     /* المستخدم */
@@ -60,7 +60,7 @@ window.I18N = {
   },
   en: {
     appName: 'Ala Mahlak', tagline: 'A trip with no surprises, and no rush.', langBtn: 'ع', langName: 'العربية',
-    pickUser: "I'm a rider", pickUserSub: 'Plan your trip and go with confidence', pickGov: "I'm from the authority", pickGovSub: 'Follow place readiness and reports',
+    pickUser: "I'm a rider", pickUserSub: 'Plan your trip and go with confidence', pickGov: "I'm from the Royal Commission for Riyadh City", pickGovSub: 'Follow place readiness and reports',
     switchView: 'Switch view', theme: 'Toggle theme', settings: 'Settings', back: 'Back', close: 'Close',
     viewUser: 'Rider', viewGov: 'Authority',
     where: 'Where are you going today?', search: 'Search for a place', fromYou: 'You · Home', noResults: 'No place with that name.',
