@@ -130,7 +130,7 @@
         <div class="from">${icon('i-home')}${t('fromYou')}</div>
         <label class="search">${icon('i-search')}<input id="q" type="search" value="${u.q}" placeholder="${t('search')}" autocomplete="off"></label>
         <ul class="dest-list">${list.map((p) => `<li><button class="dest" data-dest="${p.id}" type="button">
-          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}</span></span>
+          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}${D.routes[p.id] && D.routes[p.id].demo ? ` <span class="chip ai demo-badge">${icon('i-spark')}${t('demoBadge')}</span>` : ''}</span></span>
           ${levelChip(p.id)}${featRow(p.id)}${icon('i-chev', 'ic dest-chev flip')}</button></li>`).join('') || `<li class="muted">${t('noResults')}</li>`}</ul>`;
     }
     const p = place(u.dest), r = D.routes[u.dest];
@@ -152,18 +152,20 @@
     const steps = tripSteps(u.dest), i = u.i, s = steps[i], total = steps.length;
     let body = '';
     const nextBtn = (label, act = 'next') => `<div class="actions"><button class="btn btn-primary" data-u="${act}" type="button">${label}${icon('i-arrow', 'ic flip')}</button></div>`;
-    if (s.k === 'obstacle') body = `<span class="chip warn">${icon('i-stop')}${t('fs_down')} ✕</span>
-      <p class="instruction">${t('obstacle')}</p>${spark(t('rerouted'))}${nextBtn(t('takeMe'))}`;
-    else if (s.k === 'perm') body = `<p class="instruction">${t('permQ')}</p><p class="sub">${t('permNote')}</p>
-      <div class="report-card">${spark(t('drafted'))}<dl><dt>${t('permPlace')}</dt><dd id="tw1"></dd><dt>${t('permType')}</dt><dd id="tw2"></dd></dl></div>
-      <div class="actions"><button class="btn btn-primary" data-u="yes" type="button">${t('yes')}</button><button class="btn btn-ghost" data-u="no" type="button">${t('noThanks')}</button></div>`;
+    if (s.k === 'alert') body = `<span class="chip warn alert-chip">${icon('i-stop')}${t('alertChip')}</span>
+      <ol class="trace${S.fwd ? ' play' : ''}" aria-label="${t('traceTitle')}">${['tr1', 'tr2', 'tr3'].map((k, n) => `<li style="--i:${n}">${icon('i-spark', 'ic ai-ic')}<span>${t(k)}</span></li>`).join('')}</ol>
+      <p class="instruction calm">${t('alertCalm')}</p>
+      <div class="chips"><span class="chip info">${icon('i-clock')}${t('plus3')}</span><span class="chip muted">${icon('i-metro')}${t('twoStops')}</span></div>
+      ${nextBtn(t('next'))}`;
+    else if (s.k === 'confirm') body = `<div class="big-ic warn">${icon('i-elevator')}</div><p class="instruction">${t('confirmQ')}</p><p class="sub">${t('confirmSub')}</p>
+      <div class="actions"><button class="btn btn-primary" data-u="yes" type="button">${t('yesBroken')}</button><button class="btn btn-ghost" data-u="no" type="button">${t('notNoticed')}</button></div>`;
     else if (s.k === 'arrive') body = `<div class="big-ic ok">${icon('i-check')}</div><p class="instruction">${t('arrived')}</p>` + (u.rated
       ? `<p class="sub">${t('thanks')}</p><div class="actions"><button class="btn btn-primary" data-u="again" type="button">${t('again')}</button></div>`
       : `<p class="sub">${t('how')}</p><div class="actions rate">${['r_comfy', 'r_ok', 'r_hard'].map((k) => `<button class="btn btn-ghost" data-u="rate" type="button">${t(k)}</button>`).join('')}</div>`);
-    else body = `<div class="big-ic${s.k === 'detour' ? ' alt' : ''}">${icon(s.ic)}</div>
+    else body = `<div class="big-ic${s.k === 'detour2' ? ' alt' : ''}">${icon(s.ic)}</div>
       <p class="instruction">${t('s_' + s.k)}</p>
-      ${s.k === 'ride' ? `<p class="sub">${t('rideStops')}</p><div class="card-soft">${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText')}</p></div></div>` : ''}
-      ${s.k === 'detour' ? spark(t('rerouted')) : ''}
+      ${s.k === 'ride' ? `<p class="sub">${t('rideStops')}</p>${r.station ? `<div class="card-soft">${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText', { s: L(r.station) })}</p></div></div>` : ''}` : ''}
+      ${s.k === 'detour2' ? spark(t('rerouted')) : ''}
       ${nextBtn(t('next'))}`;
     return `${topRow(true)}<div class="stepper" aria-label="${t('stage' + s.stage)} ${i + 1}/${total}">${steps.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>
       <div class="trip-dest"><b>${t('stage' + s.stage)}</b><span>${i + 1} / ${total}</span><span class="sep">·</span>${icon('i-flag')}${L(p.name)}</div>${body}${vibBar}`;
@@ -199,12 +201,17 @@
       { k: 'ride', stage: 2, ic: 'i-metro', f: (st + al) / 2, zoom: 'all' },
       { k: 'alight', stage: 2, ic: 'i-alight', f: al, vib: 'next', zoom: 'end' }
     ];
-    return base.concat(r.obstacle ? [
-      { k: 'obstacle', stage: 3, f: 0.995, vib: 'blocked', zoom: 'end' },
-      { k: 'detour', stage: 3, ic: 'i-turn-left', alt: true, vib: 'left', zoom: 'end' },
-      { k: 'perm', stage: 4, alt: true, zoom: 'end' },
-      { k: 'arrive', stage: 5, alt: true, vib: 'arrive', zoom: 'end' }
-    ] : [
+    if (r.demo) { // رحلة العرض: العطل يصير وهي في القطار
+      const n = r.pts.length;
+      return base.slice(0, 4).concat([
+        { k: 'alert', stage: 3, f: fracAt(r.pts, n - 3), vib: 'blocked', zoom: 'end', rer: true },
+        { k: 'alight', stage: 3, ic: 'i-alight', f: al, vib: 'next', zoom: 'near', rer: true },
+        { k: 'detour2', stage: 3, ic: 'i-turn-right', alt: true, vib: 'right', zoom: 'near', rer: true },
+        { k: 'confirm', stage: 4, alt: true, zoom: 'near', rer: true },
+        { k: 'arrive', stage: 5, alt: true, vib: 'arrive', zoom: 'near', rer: true }
+      ]);
+    }
+    return base.concat([
       { k: 'exit', stage: 2, ic: 'i-lift-up', f: 1, vib: 'lift', zoom: 'end' },
       { k: 'arrive', stage: 5, f: 1, vib: 'arrive', zoom: 'end' }
     ]);
@@ -225,15 +232,16 @@
       return;
     }
     const steps = tripSteps(u.dest), s = steps[u.i];
-    const obsIdx = steps.findIndex((x) => x.k === 'obstacle'), showStop = obsIdx >= 0 && u.i >= obsIdx, rer = steps.some((x, k) => x.alt && k <= u.i);
-    const els = userMap.setMarkers([destMk(p, true), ...(showStop ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), homeMk(), originMk()]);
+    const rer = !!s.rer;
+    const els = userMap.setMarkers([destMk(p, true), ...(rer ? [{ lat: r.fault[0], lng: r.fault[1], cls: 'stop fault', html: `<span class="pulse"></span>${icon('i-stop')}` }] : []), homeMk(), originMk()]);
     S.meEl = els[els.length - 1];
     S.routePath = userMap.route(r.pts, rer ? 'chosen old' : 'chosen');
-    if (rer) userMap.route(r.alt, 'alt', s.k === 'detour' && S.meAt && !S.meAt.alt ? 900 : 0);
+    if (rer) userMap.route(r.alt, 'alt', s.k === 'alert' && S.fwd ? 1200 : 0);
     S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
-    const n = r.pts.length, endBox = r.obstacle ? [[24.7700, 46.6470], [24.7660, 46.6405]] : r.pts.slice(r.alightIdx || n - 2);
+    const n = r.pts.length, endBox = r.demo ? r.pts.slice(n - 3).concat(r.alt) : r.pts.slice(r.alightIdx || n - 2);
     if (s.zoom === 'start') userMap.fitLatLng([r.pts[0], r.pts[1]], 700, 7);
-    else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.obstacle ? 9 : 6);
+    else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.demo ? 8 : 6);
+    else if (s.zoom === 'near') userMap.fitLatLng(r.pts.slice(n - 2).concat(r.alt, [r.fault]), 700, 14);
     else userMap.fitLatLng(r.pts, 700, 3);
     moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f });
   }
@@ -278,12 +286,10 @@
 
   function goStep(i, forward) {
     clearTimers(); const steps = tripSteps(S.u.dest), s = steps[i];
-    S.u.i = i; renderUser(true); focusTitle();
+    S.fwd = forward; S.u.i = i; renderUser(true); focusTitle();
     if (!forward) return;
     if (s.vib) buzz(s.vib);
-    if (s.k === 'obstacle') S.altRoutes += 1;
-    if (s.k === 'perm') { typeInto($('#tw1'), t('permPlaceV'), 300); typeInto($('#tw2'), t('permTypeV'), 300 + t('permPlaceV').length * 28 + 150); }
-    else if (s.k !== 'perm') { const pv = $('#tw1'); if (pv) pv.textContent = t('permPlaceV'); }
+    if (s.k === 'alert') { S.altRoutes += 4; addReport(clone(D.demoFault), true); } // ✦ النظام رصد العطل وحوّل 4 رحلات
     say(s.k);
   }
   function startTrip() {
@@ -297,11 +303,11 @@
   }
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
-  function addReport(rep) {
+  function addReport(rep, silent) {
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
     if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; }
     else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
-    toast(t('sent'));
+    if (!silent) toast(t('sent'));
   }
 
   $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
@@ -315,7 +321,11 @@
     else if (a === 'settings') openSettings();
     else if (a === 'vibinfo') openVib();
     else if (a === 'next') goStep(S.u.i + 1, true);
-    else if (a === 'yes') { addReport(clone(D.journeyReport)); goStep(S.u.i + 1, true); }
+    else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
+      const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
+      if (f) { f.status = 'confirmed'; f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); }
+      toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
+    }
     else if (a === 'no') goStep(S.u.i + 1, true);
     else if (a === 'rate') { S.u.rated = true; renderUser(false); focusTitle(); }
     else if (a === 'again') { S.u = { mode: 'search', dest: null, i: 0, q: '', rated: false }; S.lastVib = null; S.meAt = null; renderUser(true); focusTitle(); }
@@ -383,7 +393,9 @@
     const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
     const lines = [];
     const live = S.reports.find((r) => r.fresh && r.status === 'pending');
-    if (live) lines.push(t('aiNew', { p: L(place(live.place).name) }));
+    const demo = S.reports.find((r) => r.demo);
+    if (demo) lines.push(t(demo.confirmedByRider ? 'aiDemoOk' : 'aiDemo'));
+    else if (live) lines.push(t('aiNew', { p: L(place(live.place).name) }));
     if (S.lastUp) lines.push(t('aiUp', { p: L(place(S.lastUp).name) }));
     const metroLifts = new Set(S.reports.filter((r) => r.issue === 'elevator' && r.authority === 'metro' && r.status !== 'forwarded').map((r) => r.place));
     if (metroLifts.size >= 2) lines.push(t('aiPattern'));

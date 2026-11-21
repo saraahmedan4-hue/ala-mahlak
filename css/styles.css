@@ -201,6 +201,17 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 .big-ic { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: var(--info-bg); color: var(--info); }
 .big-ic .ic { width: 36px; height: 36px; }
 .big-ic.ok { background: var(--ok-bg); color: var(--ok); }
+.big-ic.warn { background: var(--warn-bg); color: var(--warn); }
+/* ✦ سجل تفكير الذكاء الاصطناعي */
+.trace { list-style: none; margin: 0; padding: 12px 14px; border-radius: 16px; background: var(--ai-bg); display: flex; flex-direction: column; gap: 8px; }
+.trace li { display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.6; }
+.trace.play li { opacity: 0; animation: fade .45s ease-out forwards; animation-delay: calc(var(--i) * 900ms + 300ms); }
+.alert-chip { white-space: normal; }
+.instruction.calm { font-size: 22px; }
+.demo-badge { font-size: 13px; padding: 1px 8px; margin-inline-start: 6px; vertical-align: middle; }
+.demo-badge .ic { width: 14px; height: 14px; }
+.mv-mk.fault .pulse { width: 64px; height: 64px; border-radius: 50%; background: var(--warn); opacity: .35; transform: translate(-50%, -50%); animation: pulse 1.8s ease-out infinite; padding: 0; border: 0; }
+@keyframes pulse { 0% { transform: translate(-50%, -50%) scale(.4); opacity: .55; } 100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
 .instruction { font-size: 26px; line-height: 1.4; font-weight: 600; }
 .sub { font-size: 18px; color: var(--ink-2); }
 .card-soft { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 16px; background: var(--surface); animation: fade .4s ease-out; }
