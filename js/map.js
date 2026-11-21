@@ -14,17 +14,20 @@
         <path class="m-park" d="${M.layers.park}"/><path class="m-water" d="${M.layers.water}"/>
         <path class="m-minor" d="${M.layers.minor}"/><path class="m-mid" d="${M.layers.mid}"/>
         <path class="m-major" d="${M.layers.major}"/><path class="m-rail" d="${M.layers.rail}"/>
-        <g class="mv-routes"></g></g></svg>
+        <g class="mv-static"></g><g class="mv-routes"></g></g></svg>
+      <div class="mv-labels" aria-hidden="true">${(M.labels || []).map((l) => `<span data-x="${l.x}" data-y="${l.y}" data-a="${l.a}" data-ar="${l.ar}" data-en="${l.en}">${l.ar}</span>`).join('')}</div>
       <div class="mv-markers"></div>
       <div class="mv-ctrl"><button type="button" class="mv-btn" data-z="1" aria-label="+"><svg class="ic"><use href="#i-plus"/></svg></button><button type="button" class="mv-btn" data-z="-1" aria-label="−"><svg class="ic"><use href="#i-dash"/></svg></button></div>
       <span class="mv-attr" lang="en" dir="ltr">© OpenStreetMap</span>`;
-    const svg = el.querySelector('svg'), world = el.querySelector('.mv-world'), routes = el.querySelector('.mv-routes'), mk = el.querySelector('.mv-markers');
+    const svg = el.querySelector('svg'), world = el.querySelector('.mv-world'), routes = el.querySelector('.mv-routes'), stat = el.querySelector('.mv-static'), mk = el.querySelector('.mv-markers');
+    const labs = [...el.querySelectorAll('.mv-labels span')];
     const st = { s: 0.3, tx: 0, ty: 0 }; let markers = []; let lastFit = null; let anim = 0;
     const pad = () => (opts.pad ? opts.pad() : { t: 40, r: 40, b: 40, l: 40 });
 
     function apply() {
       world.setAttribute('transform', `translate(${st.tx} ${st.ty}) scale(${st.s})`);
-      el.classList.toggle('mv-near', st.s > 1.4);
+      el.classList.toggle('mv-near', st.s > 1.4); el.classList.toggle('mv-names', st.s > 0.55);
+      labs.forEach((l) => { l.style.transform = `translate(${l.dataset.x * st.s + st.tx}px, ${l.dataset.y * st.s + st.ty}px) translate(-50%, -50%) rotate(${l.dataset.a}deg)`; });
       markers.forEach((m) => { m.el.style.transform = `translate(${m.p[0] * st.s + st.tx}px, ${m.p[1] * st.s + st.ty}px)`; });
     }
     function bounds(pts) {
@@ -62,10 +65,10 @@
     function moveMarker(elm, lat, lng, worldPt) { const m = markers.find((x) => x.el === elm); if (!m) return; m.p = worldPt || proj(lat, lng); apply(); }
 
     const pathD = (pts) => 'M' + pts.map((p) => proj(p[0], p[1]).map((v) => v.toFixed(1)).join(' ')).join('L');
-    function route(pts, cls, draw) {
+    function route(pts, cls, draw, layer) {
       const p = document.createElementNS(NS, 'path');
       p.setAttribute('d', pathD(pts)); p.setAttribute('class', 'mv-route ' + (cls || ''));
-      p.setAttribute('vector-effect', 'non-scaling-stroke'); routes.appendChild(p);
+      p.setAttribute('vector-effect', 'non-scaling-stroke'); (layer || routes).appendChild(p);
       if (draw && !reduce()) { // يرسم المسار تدريجياً
         const full = p.getAttribute('d'), L = p.getTotalLength(), N = 48, t0 = performance.now();
         const pts = Array.from({ length: N + 1 }, (_, i) => p.getPointAtLength((L * i) / N));
@@ -103,7 +106,9 @@
     el.querySelectorAll('.mv-btn').forEach((b) => b.addEventListener('click', () => zoomAt(b.dataset.z === '1' ? 1.4 : 1 / 1.4, el.clientWidth / 2, el.clientHeight / 2)));
     if ('ResizeObserver' in window) new ResizeObserver(() => { if (lastFit) fitLatLng(lastFit[0], 0, lastFit[1]); }).observe(el);
 
-    return { fitLatLng, setMarkers, moveMarker, route, clearRoutes, proj };
+    const setLang = (lang) => labs.forEach((l) => { l.textContent = lang === 'en' ? l.dataset.en : l.dataset.ar; });
+    (opts.lines || []).forEach((pts) => route(pts, 'metro', 0, stat));
+    return { fitLatLng, setMarkers, moveMarker, route, clearRoutes, proj, setLang };
   }
   window.MapView = MapView;
 })();

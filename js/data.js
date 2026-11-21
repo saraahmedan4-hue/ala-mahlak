@@ -42,7 +42,7 @@ window.SEED = {
 
   authorities: {
     metro: { ar: 'تشغيل المترو', en: 'Metro operations' },
-    sidewalk: { ar: 'البلدية للرصيف', en: 'Municipality (sidewalks)' },
+    sidewalk: { ar: 'البلدية (الأرصفة)', en: 'Municipality (sidewalks)' },
     building: { ar: 'إدارة المبنى', en: 'Building management' }
   },
 

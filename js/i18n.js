@@ -33,13 +33,18 @@ window.I18N = {
     govTitle: 'جاهزية الأماكن', kpiReports: 'بلاغات اليوم', kpiAlt: 'مسارات بديلة', kpiWorst: 'أكثر الأماكن تعطّلاً',
     aiTitle: 'ملخص اليوم', aiTop: 'أعطال {i} الأكثر اليوم ({n}). الأولوية: {p}.', aiNew: 'بلاغ جديد عن {p}، تحققت منه وينتظر موافقتك.',
     aiMerged: 'دمجت بلاغين مكررين', reports: 'البلاغات', places: 'الأماكن',
-    approve: 'موافقة', forward: 'تحويل', newBadge: 'جديد', merged: 'مدموج من بلاغين',
+    approve: 'موافقة', forwardTo: 'حوّل إلى {a}', newBadge: 'جديد', merged: 'بلّغ عنه شخصين، دمجتهم', mergedN: 'بلّغ عنه {n} أشخاص، دمجتهم',
     st_confirmed: 'مؤكد', st_pending: 'بانتظار التأكيد', st_temporary: 'عائق مؤقت', st_forwarded: 'حُوّل',
     sev_high: 'عالية', sev_medium: 'متوسطة', expires: 'ينتهي بعد {h} ساعات إذا ما تأكد',
     ck_presence: 'تم التحقق من التواجد', ck_behavior: 'سلوك الرحلة يطابق', ck_log: 'يطابق سجل الأعطال', ck_second: 'تأكيد من مستخدم ثاني',
     draft: 'مسودة البلاغ', authority: 'الجهة',
     is_elevator: 'المصاعد', is_ramp: 'المنحدرات', is_door: 'الأبواب',
-    issue_elevator: 'مصعد متوقف', issue_ramp: 'منحدر مسدود', issue_door: 'باب ما يفتح'
+    issue_elevator: 'مصعد متوقف', issue_ramp: 'منحدر مسدود', issue_door: 'باب ما يفتح', issue_other: 'مشكلة ثانية', is_other: 'المشاكل الثانية',
+    stage2: 'في الطريق', stage3: 'عائق', stage4: 'الإذن', stage5: 'الوصول', next: 'التالي',
+    s_gates: 'اطلع من بوابات المحطة، والمصعد على يمينك.', s_lift: 'انزل بالمصعد للرصيف 2.', s_ride: 'اركب القطار من الرصيف 2.',
+    rideStops: 'باقي 3 محطات. بقولك قبل لا توصل.', s_alight: 'انزل هنا. الأبواب على اليمين.',
+    s_detour: 'لفّي يسار عند نهاية الرصيف، والمصعد على يمينك.', s_exit: 'اطلع بالمصعد، والمدخل قدامك.',
+    report: 'بلّغ', reportTitle: 'بلّغ عن مشكلة', reportType: 'وش المشكلة؟', reportWhere: 'وين؟', send: 'أرسل', cancel: 'إلغاء'
   },
   en: {
     appName: 'Ala Mahlak', tagline: 'A trip with no surprises, and no rush.', langBtn: 'ع', langName: 'العربية',
@@ -73,12 +78,17 @@ window.I18N = {
     govTitle: 'Place readiness', kpiReports: "Today's reports", kpiAlt: 'Alternative routes', kpiWorst: 'Most disrupted place',
     aiTitle: "Today's summary", aiTop: '{i} faults lead today ({n}). Priority: {p}.', aiNew: 'New report about {p}, verified and awaiting your approval.',
     aiMerged: 'Merged two duplicate reports', reports: 'Reports', places: 'Places',
-    approve: 'Approve', forward: 'Forward', newBadge: 'New', merged: 'Merged from 2',
+    approve: 'Approve', forwardTo: 'Send to {a}', newBadge: 'New', merged: '2 people reported it, merged', mergedN: '{n} people reported it, merged',
     st_confirmed: 'Confirmed', st_pending: 'Awaiting confirmation', st_temporary: 'Temporary', st_forwarded: 'Forwarded',
     sev_high: 'High', sev_medium: 'Medium', expires: 'Ends in {h} hours if not confirmed',
     ck_presence: 'Presence verified', ck_behavior: 'Trip behaviour matches', ck_log: 'Matches fault log', ck_second: 'Confirmed by a second user',
     draft: 'Report draft', authority: 'Authority',
     is_elevator: 'Elevator', is_ramp: 'Ramp', is_door: 'Door',
-    issue_elevator: 'Elevator stopped', issue_ramp: 'Ramp blocked', issue_door: "Door won't open"
+    issue_elevator: 'Elevator stopped', issue_ramp: 'Ramp blocked', issue_door: "Door won't open", issue_other: 'Another problem', is_other: 'Other',
+    stage2: 'On the way', stage3: 'Obstacle', stage4: 'Permission', stage5: 'Arrival', next: 'Next',
+    s_gates: 'Go through the station gates, the elevator is on your right.', s_lift: 'Take the elevator down to platform 2.', s_ride: 'Take the train from platform 2.',
+    rideStops: "3 stops left. I'll tell you before you arrive.", s_alight: 'Get off here. Doors on the right.',
+    s_detour: 'Turn left at the end of the platform, the elevator is on your right.', s_exit: 'Take the elevator up, the entrance is in front of you.',
+    report: 'Report', reportTitle: 'Report a problem', reportType: "What's the problem?", reportWhere: 'Where?', send: 'Send', cancel: 'Cancel'
   }
 };

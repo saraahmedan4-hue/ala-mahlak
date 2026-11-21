@@ -8,9 +8,9 @@
   /* الحالة داخل الصفحة نفسها (مشتركة بين الواجهتين) */
   const S = {
     lang: 'ar', theme: 'dark', view: 'home',
-    reports: clone(D.reports), altRoutes: D.altRoutesToday, mergeShown: false, liveNew: false,
+    reports: clone(D.reports), altRoutes: D.altRoutesToday, mergeShown: false,
     modes: { map: true, sound: false, vib: true },
-    u: { mode: 'search', dest: null, step: 0, q: '', rated: false, sent: false },
+    u: { mode: 'search', dest: null, i: 0, q: '', rated: false },
     timers: [], open: {}
   };
   const t = (k, v) => { let s = I[S.lang][k] ?? I.ar[k] ?? k; if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
@@ -79,13 +79,14 @@
 
   /* ===== التنقل بين الواجهات ===== */
   let userMap = null, govMap = null;
+  const METRO = [D.routes.kafd.pts, D.routes.museum.pts];
   function setView(v) {
     S.view = v; document.body.dataset.view = v; renderStatic(); window.scrollTo(0, 0);
     if (v === 'user') {
-      if (!userMap) userMap = MapView($('#userMap'), { pad: userPad });
+      if (!userMap) userMap = MapView($('#userMap'), { pad: userPad, lines: METRO });
       renderUser(true);
     } else if (v === 'gov') {
-      if (!govMap) govMap = MapView($('#govMap'), { pad: () => ({ t: 90, r: 110, b: 70, l: 110 }) });
+      if (!govMap) govMap = MapView($('#govMap'), { lines: METRO, pad: () => ({ t: 90, r: 110, b: 70, l: 110 }) });
       renderGov(true);
     }
     const h = document.querySelector(v === 'home' ? '#homeName' : v === 'user' ? '#panel h1' : '#gov h1');
@@ -133,28 +134,30 @@
         <div class="actions"><button class="btn btn-primary" data-u="start" type="button">${t('start')}${icon('i-arrow', 'ic flip')}</button>
           <button class="btn btn-ghost" data-u="help" type="button">${icon('i-help')}${t('help')}</button></div>`;
     }
-    /* الرحلة */
-    const n = u.step;
+    /* الرحلة: خطوة بخطوة بزر «التالي» */
+    const steps = tripSteps(u.dest), i = u.i, s = steps[i], total = steps.length;
     let body = '';
-    if (n === 2) body = `<div class="big-ic">${icon('i-metro')}</div><p class="instruction">${t('ride')}</p><p class="sub">${t('rideSub')}</p>
-      <div class="card-soft" id="announce" hidden>${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText')}</p></div></div>`;
-    if (n === 3) body = `<span class="chip warn">${icon('i-stop')}${t('fs_down')} ✕</span>
-      <p class="instruction">${t('obstacle')}</p>${spark(t('rerouted'))}
-      <div class="card-soft alt">${icon('i-branch')}<p>${t('altDir')}</p></div>
-      <div class="actions"><button class="btn btn-primary" data-u="take" type="button">${t('takeMe')}${icon('i-arrow', 'ic flip')}</button></div>`;
-    if (n === 4) body = `<p class="instruction">${t('permQ')}</p><p class="sub">${t('permNote')}</p>
+    const nextBtn = (label, act = 'next') => `<div class="actions"><button class="btn btn-primary" data-u="${act}" type="button">${label}${icon('i-arrow', 'ic flip')}</button></div>`;
+    if (s.k === 'obstacle') body = `<span class="chip warn">${icon('i-stop')}${t('fs_down')} ✕</span>
+      <p class="instruction">${t('obstacle')}</p>${spark(t('rerouted'))}${nextBtn(t('takeMe'))}`;
+    else if (s.k === 'perm') body = `<p class="instruction">${t('permQ')}</p><p class="sub">${t('permNote')}</p>
       <div class="report-card">${spark(t('drafted'))}<dl><dt>${t('permPlace')}</dt><dd id="tw1"></dd><dt>${t('permType')}</dt><dd id="tw2"></dd></dl></div>
       <div class="actions"><button class="btn btn-primary" data-u="yes" type="button">${t('yes')}</button><button class="btn btn-ghost" data-u="no" type="button">${t('noThanks')}</button></div>`;
-    if (n === 5) body = `<div class="big-ic ok">${icon('i-check')}</div><p class="instruction">${t('arrived')}</p>` + (u.rated
+    else if (s.k === 'arrive') body = `<div class="big-ic ok">${icon('i-check')}</div><p class="instruction">${t('arrived')}</p>` + (u.rated
       ? `<p class="sub">${t('thanks')}</p><div class="actions"><button class="btn btn-primary" data-u="again" type="button">${t('again')}</button></div>`
       : `<p class="sub">${t('how')}</p><div class="actions rate">${['r_comfy', 'r_ok', 'r_hard'].map((k) => `<button class="btn btn-ghost" data-u="rate" type="button">${t(k)}</button>`).join('')}</div>`);
-    return `${topRow(n < 5)}${stepper(n)}<div class="trip-dest">${icon('i-flag')}${L(p.name)}</div>${body}${vibBar}`;
+    else body = `<div class="big-ic${s.k === 'detour' ? ' alt' : ''}">${icon(s.ic)}</div>
+      <p class="instruction">${t('s_' + s.k)}</p>
+      ${s.k === 'ride' ? `<p class="sub">${t('rideStops')}</p><div class="card-soft">${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText')}</p></div></div>` : ''}
+      ${s.k === 'detour' ? spark(t('rerouted')) : ''}
+      ${nextBtn(t('next'))}`;
+    return `${topRow(true)}<div class="stepper" aria-label="${t('stage' + s.stage)} ${i + 1}/${total}">${steps.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="trip-dest"><b>${t('stage' + s.stage)}</b><span>${i + 1} / ${total}</span><span class="sep">·</span>${icon('i-flag')}${L(p.name)}</div>${body}${vibBar}`;
   }
 
   function renderUser(fit) {
     $('#panel').innerHTML = panelHTML();
     const q = $('#q'); if (q && S.u.focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
-    if (S.u.mode === 'trip' && S.u.step === 2 && S.u.announced) $('#announce').hidden = false;
     if (S.lastVib && S.u.mode === 'trip') { const b = $('#vibBar'); if (b) { b.hidden = !S.modes.vib; b.querySelector('.vib-p').innerHTML = pulses(S.lastVib); b.querySelector('.vib-l').textContent = t('vib_' + S.lastVib); b.querySelectorAll('i').forEach((i) => i.classList.add('on')); } }
     if (fit) userMapScene();
   }
@@ -163,6 +166,26 @@
   const destMk = (p, active) => ({ lat: p.lat, lng: p.lng, cls: 'pin p-' + p.id + ' lab-' + p.lab + ' ' + level(score(p.id)) + (active ? ' active' : ''), label: L(p.name),
     onClick: S.u.mode === 'search' ? () => pickDest(p.id) : null,
     html: `<span class="pin-dot">${dots(level(score(p.id)))}</span><span class="pin-name">${L(p.name)}</span>` });
+
+  /* خطوات الرحلة لكل وجهة (stage = الخطوات الخمس في HANDOFF) */
+  function tripSteps(dest) {
+    const r = D.routes[dest];
+    const base = [
+      { k: 'gates', stage: 2, ic: 'i-entrance', f: 0, vib: 'right', zoom: 'start' },
+      { k: 'lift', stage: 2, ic: 'i-elevator', f: 0.03, vib: 'lift', zoom: 'start' },
+      { k: 'ride', stage: 2, ic: 'i-metro', f: 0.5, zoom: 'all' },
+      { k: 'alight', stage: 2, ic: 'i-metro', f: 0.9, vib: 'next', zoom: 'end' }
+    ];
+    return base.concat(r.obstacle ? [
+      { k: 'obstacle', stage: 3, f: 0.97, vib: 'blocked', zoom: 'end' },
+      { k: 'detour', stage: 3, ic: 'i-branch', alt: true, vib: 'left', zoom: 'end' },
+      { k: 'perm', stage: 4, alt: true, zoom: 'end' },
+      { k: 'arrive', stage: 5, alt: true, vib: 'arrive', zoom: 'end' }
+    ] : [
+      { k: 'exit', stage: 2, ic: 'i-elevator', f: 1, vib: 'lift', zoom: 'end' },
+      { k: 'arrive', stage: 5, f: 1, vib: 'arrive', zoom: 'end' }
+    ]);
+  }
 
   function userMapScene() {
     const u = S.u; userMap.clearRoutes();
@@ -178,19 +201,40 @@
       thinkAnimation(r);
       return;
     }
-    const pts = u.rerouted ? r.pts.slice(0, -1).concat(r.alt) : r.pts;
-    const els = userMap.setMarkers([destMk(p, true), ...(u.step >= 3 && r.obstacle ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), originMk()]);
+    const steps = tripSteps(u.dest), s = steps[u.i];
+    const obsIdx = steps.findIndex((x) => x.k === 'obstacle'), showStop = obsIdx >= 0 && u.i >= obsIdx, rer = steps.some((x, k) => x.alt && k <= u.i);
+    const els = userMap.setMarkers([destMk(p, true), ...(showStop ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), originMk()]);
     S.meEl = els[els.length - 1];
-    S.routePath = userMap.route(r.pts, u.rerouted ? 'chosen old' : 'chosen');
-    if (u.rerouted) userMap.route(r.alt, 'alt', u.step === 3 ? 900 : 0);
-    if (u.step >= 3 && r.obstacle) { userMap.fitLatLng([[24.7700, 46.6470], [24.7660, 46.6405]], 700, 9); placeMe(S.progress); }
-    else if (u.step === 5) { userMap.fitLatLng([pts[pts.length - 2], pts[pts.length - 1]], 700, 5); placeMe(1); }
-    else { userMap.fitLatLng(pts, 700, 3); placeMe(S.progress || 0); }
+    S.routePath = userMap.route(r.pts, rer ? 'chosen old' : 'chosen');
+    if (rer) userMap.route(r.alt, 'alt', s.k === 'detour' && S.meAt && !S.meAt.alt ? 900 : 0);
+    S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
+    const n = r.pts.length, endBox = r.obstacle ? [[24.7700, 46.6470], [24.7660, 46.6405]] : [r.pts[n - 2], r.pts[n - 1]];
+    if (s.zoom === 'start') userMap.fitLatLng([r.pts[0], r.pts[1]], 700, 7);
+    else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.obstacle ? 9 : 6);
+    else userMap.fitLatLng(r.pts, 700, 3);
+    moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f });
   }
-  function placeMe(f) {
-    if (!S.routePath || !S.meEl) return;
-    const L0 = S.routePath.getTotalLength(), pt = S.routePath.getPointAtLength(L0 * Math.min(1, f));
-    userMap.moveMarker(S.meEl, 0, 0, [pt.x, pt.y]);
+  /* تحريك نقطتك بهدوء من مكانها للخطوة الجاية */
+  function pointAt(at) {
+    const path = at.alt ? S.altPath : S.routePath; if (!path) return null;
+    const pt = path.getPointAtLength(path.getTotalLength() * Math.min(1, at.f)); return [pt.x, pt.y];
+  }
+  function moveMe(to) {
+    if (!S.meEl) return;
+    let from = S.meAt || to;
+    if (to.alt && !from.alt) from = { alt: true, f: 0 };
+    if (!to.alt && from.alt) from = to;
+    S.meAt = to;
+    const a = pointAt(from), b = pointAt(to); if (!a || !b) return;
+    if (reduce() || (a[0] === b[0] && a[1] === b[1])) { userMap.moveMarker(S.meEl, 0, 0, b); return; }
+    const t0 = performance.now(), dur = 1100, el = S.meEl;
+    const step = (now) => {
+      if (el !== S.meEl) return;
+      const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      userMap.moveMarker(el, 0, 0, pointAt({ alt: to.alt, f: from.f + (to.f - from.f) * e }));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   /* ✦ لحظة التفكير: 3 مسارات، اثنين يبهتون ويبقى الأوثق */
@@ -202,7 +246,6 @@
       [c1, c2].forEach((c) => c.classList.add('fade')); c3.classList.add('chosen');
       const a = $('#aiLine'); if (a) a.innerHTML = spark(`${t('chose')} ${L(r.why)}`, 'done');
       const s = $('#stats'); if (s) s.hidden = false;
-      S.altRoutes += 0;
     };
     if (reduce()) done(); else later(done, 1500);
   }
@@ -210,39 +253,32 @@
   function pickDest(id) { S.u = { ...S.u, mode: 'place', dest: id, focusQ: false }; renderUser(true); focusTitle(); }
   function focusTitle() { const h = $('#panel .p-title, #panel .instruction'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
 
+  function goStep(i, forward) {
+    clearTimers(); const steps = tripSteps(S.u.dest), s = steps[i];
+    S.u.i = i; renderUser(true); focusTitle();
+    if (!forward) return;
+    if (s.vib) buzz(s.vib);
+    if (s.k === 'obstacle') S.altRoutes += 1;
+    if (s.k === 'perm') { typeInto($('#tw1'), t('permPlaceV'), 300); typeInto($('#tw2'), t('permTypeV'), 300 + t('permPlaceV').length * 28 + 150); }
+    else if (s.k !== 'perm') { const pv = $('#tw1'); if (pv) pv.textContent = t('permPlaceV'); }
+    say(s.k === 'obstacle' ? t('obstacle') : s.k === 'perm' ? t('permQ') + ' ' + t('permNote') : s.k === 'arrive' ? t('arrived') + ' ' + t('how') : t('s_' + s.k));
+  }
   function startTrip() {
-    clearTimers(); const r = D.routes[S.u.dest];
-    Object.assign(S.u, { mode: 'trip', step: 2, rerouted: false, announced: false, rated: false }); S.progress = 0;
-    renderUser(true); focusTitle(); buzz('right'); say(t('ride') + ' ' + t('rideSub'));
-    const end = r.obstacle ? 0.88 : 1, dur = 6500, t0 = performance.now();
-    const tick = (now) => {
-      if (S.u.mode !== 'trip' || S.u.step !== 2) return;
-      S.progress = Math.min(end, ((now - t0) / dur) * end); placeMe(S.progress);
-      if (S.progress < end) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    later(() => { S.u.announced = true; const a = $('#announce'); if (a) a.hidden = false; buzz('next'); say(t('announceText')); }, 2500);
-    later(() => (r.obstacle ? obstacle() : arrive()), dur + 300);
-  }
-  function obstacle() {
-    S.u.step = 3; S.u.rerouted = true; S.altRoutes += 1; renderUser(true); focusTitle();
-    buzz('blocked'); say(t('obstacle'));
-  }
-  function permission() {
-    S.u.step = 4; renderUser(false); focusTitle(); buzz('left'); say(t('permQ') + ' ' + t('permNote'));
-    typeInto($('#tw1'), t('permPlaceV'), 0); typeInto($('#tw2'), t('permTypeV'), t('permPlaceV').length * 28 + 150);
+    Object.assign(S.u, { mode: 'trip', i: 0, rated: false }); S.meAt = null;
+    goStep(0, true);
   }
   function typeInto(el, text, delay) {
     if (!el) return; if (reduce()) { el.textContent = text; return; }
     el.classList.add('typing'); let i = 0;
     later(function step() { if (!el.isConnected) return; el.textContent = text.slice(0, ++i); if (i < text.length) later(step, 28); else el.classList.remove('typing'); }, delay);
   }
-  function arrive() { S.u.step = 5; S.progress = 1; renderUser(true); focusTitle(); buzz('arrive'); say(t('arrived') + ' ' + t('how')); }
-  function sendReport() {
-    const now = new Date(), time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    const ex = S.reports.find((r) => r.id === 'live');
-    if (ex) { ex.merged += 1; ex.time = time; } else S.reports.push(Object.assign(clone(D.journeyReport), { time }));
-    S.liveNew = true; toast(t('sent'));
+  function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
+  function addReport(rep) {
+    const ex = S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; }
+    else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
+    toast(t('sent'));
   }
 
   $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
@@ -250,16 +286,16 @@
     const d = e.target.closest('[data-dest]'); if (d) return pickDest(d.dataset.dest);
     const b = e.target.closest('[data-u]'); if (!b) return;
     const a = b.dataset.u;
-    if (a === 'back') { clearTimers(); S.u = { ...S.u, mode: S.u.mode === 'trip' ? 'place' : 'search', focusQ: false }; renderUser(true); focusTitle(); }
+    if (a === 'back') { if (S.u.mode === 'trip' && S.u.i > 0) return goStep(S.u.i - 1, false); clearTimers(); S.u = { ...S.u, mode: S.u.mode === 'trip' ? 'place' : 'search', focusQ: false }; S.meAt = null; renderUser(true); focusTitle(); }
     else if (a === 'start') startTrip();
     else if (a === 'help') openSheet(`<h2 id="sheetTitle">${t('help')}</h2><p>${t('helpText')}</p><button class="btn btn-primary" data-close type="button">${t('ok')}</button>`);
     else if (a === 'settings') openSettings();
     else if (a === 'vibinfo') openVib();
-    else if (a === 'take') permission();
-    else if (a === 'yes') { sendReport(); arrive(); }
-    else if (a === 'no') arrive();
+    else if (a === 'next') goStep(S.u.i + 1, true);
+    else if (a === 'yes') { addReport(clone(D.journeyReport)); goStep(S.u.i + 1, true); }
+    else if (a === 'no') goStep(S.u.i + 1, true);
     else if (a === 'rate') { S.u.rated = true; renderUser(false); focusTitle(); }
-    else if (a === 'again') { S.u = { mode: 'search', dest: null, step: 0, q: '', rated: false }; S.lastVib = null; renderUser(true); focusTitle(); }
+    else if (a === 'again') { S.u = { mode: 'search', dest: null, i: 0, q: '', rated: false }; S.lastVib = null; S.meAt = null; renderUser(true); focusTitle(); }
   });
   function openSettings() {
     const mb = (k, ic) => `<button class="mode" type="button" data-mode="${k}" aria-pressed="${S.modes[k]}">${icon('i-check', 'ic tick')}${icon(ic)}<span>${t('mode_' + k)}</span><span class="on-word">${t('active')}</span></button>`;
@@ -280,16 +316,42 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
 
+  /* ===== زر «بلّغ» الدائم ===== */
+  const REP_TYPES = ['elevator', 'ramp', 'door', 'other'];
+  const REP_AUTH = { elevator: 'metro', ramp: 'sidewalk', door: 'building', other: 'building' };
+  function openReport() {
+    const u = S.u, steps = u.mode === 'trip' ? tripSteps(u.dest) : null;
+    const ctx = u.mode === 'place' || (steps && u.i >= steps.findIndex((x) => x.k === 'alight')) ? u.dest : 'pnu';
+    S.rep = { type: null, place: ctx };
+    openSheet(`<h2 id="sheetTitle">${t('reportTitle')}</h2>
+      <div class="block"><h2>${t('reportType')}</h2><div class="types">${REP_TYPES.map((k) => `<button class="type" type="button" data-rtype="${k}" aria-pressed="false">${icon(issueIc[k])}<span>${t('issue_' + k)}</span></button>`).join('')}</div></div>
+      <label class="block"><h2>${t('reportWhere')}</h2><select id="repPlace" class="select">${D.places.map((p) => `<option value="${p.id}"${p.id === ctx ? ' selected' : ''}>${L(p.name)}</option>`).join('')}</select></label>
+      ${spark(t('permNote'))}
+      <div class="sheet-actions"><button class="btn btn-primary" data-send type="button" disabled>${t('send')}</button><button class="btn btn-ghost" data-close type="button">${t('cancel')}</button></div>`);
+  }
+  $('#reportFab').addEventListener('click', openReport);
+  $('#sheet').addEventListener('change', (e) => { if (e.target.id === 'repPlace' && S.rep) S.rep.place = e.target.value; });
+  $('#sheet').addEventListener('click', (e) => {
+    const ty = e.target.closest('[data-rtype]');
+    if (ty) { S.rep.type = ty.dataset.rtype; $('#sheet').querySelectorAll('[data-rtype]').forEach((b) => b.setAttribute('aria-pressed', b === ty)); $('#sheet [data-send]').disabled = false; return; }
+    if (e.target.closest('[data-send]') && S.rep && S.rep.type) {
+      const k = S.rep.type;
+      addReport({ place: S.rep.place, issue: k, severity: k === 'elevator' || k === 'ramp' ? 'high' : 'medium', authority: REP_AUTH[k], title: { ar: I.ar['issue_' + k], en: I.en['issue_' + k] } });
+      S.rep = null; closeSheet();
+      if (S.u.mode !== 'trip') renderUser(true);
+    }
+  });
+
   /* ===== واجهة الهيئة ===== */
   const stChip = { confirmed: ['warn', 'i-stop'], pending: ['muted', 'i-clock'], temporary: ['info', 'i-hourglass'], forwarded: ['ok', 'i-check'] };
-  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door' };
+  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door', other: 'i-flag' };
   function aiSummary() {
     const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + (r.merged || 1); });
     const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
     const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
     const lines = [];
-    const live = S.reports.find((r) => r.id === 'live');
-    if (live && live.status === 'pending') lines.push(t('aiNew', { p: L(place(live.place).name) }));
+    const live = S.reports.find((r) => r.fresh && r.status === 'pending');
+    if (live) lines.push(t('aiNew', { p: L(place(live.place).name) }));
     lines.push(t('aiTop', { i: t('is_' + top), n: by[top], p: L(worst.name) }));
     return lines;
   }
@@ -304,14 +366,14 @@
   function rowHTML(r, dup) {
     const [tone, ic] = stChip[r.status], open = S.open[r.id] && !dup;
     const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
-    const isNew = r.live && S.liveNew;
+    const isNew = !!r.fresh;
     return `<li class="row${isNew ? ' is-new' : ''}${dup ? ' dup' : ''}${open ? ' open' : ''}" data-id="${r.id}">
       <button class="row-main" type="button" aria-expanded="${!!open}" data-toggle="${r.id}">
         <span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
         <span class="row-txt"><b>${L(r.title)}</b><span>${L(place(r.place).name)} · ${r.time}</span></span>
-        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${r.merged > 1 && S.mergeShown ? `<span class="chip info">${icon('i-spark')}${t('merged')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
+        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${r.merged > 1 && S.mergeShown ? `<span class="chip info">${icon('i-spark')}${r.merged === 2 ? t('merged') : t('mergedN', { n: r.merged })}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
       </button>
-      <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${t('forward')}</button>` : ''}</div>
+      <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>
       ${open ? `<div class="row-more">
         <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
         <p><span class="muted">${t('authority')}:</span> <b>${L(D.authorities[r.authority])}</b> · <span class="muted">${t('sev_' + r.severity)}</span></p>
@@ -321,7 +383,7 @@
   }
   function renderRows() {
     const sev = { high: 0, medium: 1 };
-    const list = S.reports.slice().sort((a, b) => (b.live && S.liveNew ? 1 : 0) - (a.live && S.liveNew ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
+    const list = S.reports.slice().sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
     $('#rows').innerHTML = list.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown ? rowHTML(r, true) : '')).join('');
     $('#repCount').textContent = S.reports.length;
   }
@@ -342,7 +404,7 @@
     const a = e.target.closest('[data-act-r]');
     if (a) {
       const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
-      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; if (r.live) S.liveNew = false;
+      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
       renderGov(false); return;
     }
     const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
@@ -353,7 +415,7 @@
     const v = e.target.closest('[data-go-view]'); if (v) return setView(v.dataset.goView);
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'switch') setView(S.view === 'gov' ? 'user' : 'gov');
-    if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
+    if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); [userMap, govMap].forEach((m) => m && m.setLang(S.lang)); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
     if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
   });
 
