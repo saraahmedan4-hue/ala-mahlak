@@ -124,10 +124,10 @@
     const u = S.u;
     if (u.mode === 'search') {
       const q = u.q.trim().toLowerCase();
-      const list = D.places.filter((p) => p.id !== 'pnu' && (!q || (p.name.ar + p.name.en + p.kind.ar + p.kind.en).toLowerCase().includes(q)));
+      const list = D.places.filter((p) => (!q || (p.name.ar + p.name.en + p.kind.ar + p.kind.en).toLowerCase().includes(q)));
       return `${topRow(false)}
         <h1 class="p-title">${t('where')}</h1>
-        <div class="from"><span class="me-dot"></span>${t('fromYou')}</div>
+        <div class="from">${icon('i-home')}${t('fromYou')}</div>
         <label class="search">${icon('i-search')}<input id="q" type="search" value="${u.q}" placeholder="${t('search')}" autocomplete="off"></label>
         <ul class="dest-list">${list.map((p) => `<li><button class="dest" data-dest="${p.id}" type="button">
           <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}</span></span>
@@ -176,19 +176,28 @@
     if (fit) userMapScene();
   }
 
+  const homeMk = () => ({ lat: D.origin.lat, lng: D.origin.lng, cls: 'home', html: `<span class="home-mk">${icon('i-home')}</span>` });
   const originMk = () => ({ lat: D.origin.lat, lng: D.origin.lng, cls: 'me', html: '<span class="me-dot"></span>' });
   const destMk = (p, active) => ({ lat: p.lat, lng: p.lng, cls: 'pin p-' + p.id + ' lab-' + p.lab + ' ' + level(score(p.id)) + (active ? ' active' : ''), label: L(p.name),
     onClick: S.u.mode === 'search' ? () => pickDest(p.id) : null,
     html: `<span class="pin-dot">${dots(level(score(p.id)))}</span><span class="pin-name">${L(p.name)}</span>` });
 
+  /* نسبة نقطة من المسار (حسب الطول) */
+  function fracAt(pts, idx) {
+    const d = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * 0.91);
+    let tot = 0, upto = 0; for (let k = 1; k < pts.length; k++) { const s = d(pts[k], pts[k - 1]); tot += s; if (k <= idx) upto += s; }
+    return upto / tot;
+  }
   /* خطوات الرحلة لكل وجهة (stage = الخطوات الخمس في HANDOFF) */
   function tripSteps(dest) {
     const r = D.routes[dest];
+    const st = fracAt(r.pts, 1), al = r.alightIdx ? fracAt(r.pts, r.alightIdx) : 0.985;
     const base = [
-      { k: 'gates', stage: 2, ic: 'i-gates', f: 0, vib: 'right', zoom: 'start' },
-      { k: 'lift', stage: 2, ic: 'i-lift-down', f: 0.03, vib: 'lift', zoom: 'start' },
-      { k: 'ride', stage: 2, ic: 'i-metro', f: 0.5, zoom: 'all' },
-      { k: 'alight', stage: 2, ic: 'i-alight', f: 0.985, vib: 'next', zoom: 'end' }
+      { k: 'walk', stage: 2, ic: 'i-walk', f: 0, zoom: 'start' },
+      { k: 'gates', stage: 2, ic: 'i-gates', f: st, vib: 'right', zoom: 'start' },
+      { k: 'lift', stage: 2, ic: 'i-lift-down', f: st, vib: 'lift', zoom: 'start' },
+      { k: 'ride', stage: 2, ic: 'i-metro', f: (st + al) / 2, zoom: 'all' },
+      { k: 'alight', stage: 2, ic: 'i-alight', f: al, vib: 'next', zoom: 'end' }
     ];
     return base.concat(r.obstacle ? [
       { k: 'obstacle', stage: 3, f: 0.995, vib: 'blocked', zoom: 'end' },
@@ -204,25 +213,25 @@
   function userMapScene() {
     const u = S.u; userMap.clearRoutes();
     if (u.mode === 'search') {
-      userMap.setMarkers([...D.places.filter((p) => p.id !== 'pnu').map((p) => destMk(p)), originMk()]);
+      userMap.setMarkers([...D.places.map((p) => destMk(p)), homeMk()]);
       userMap.fitLatLng([[D.origin.lat, D.origin.lng], ...D.places.map((p) => [p.lat, p.lng])]);
       return;
     }
     const p = place(u.dest), r = D.routes[u.dest];
     if (u.mode === 'place') {
-      userMap.setMarkers([destMk(p, true), originMk()]);
+      userMap.setMarkers([destMk(p, true), homeMk()]);
       userMap.fitLatLng(r.pts, 700, 3);
       thinkAnimation(r);
       return;
     }
     const steps = tripSteps(u.dest), s = steps[u.i];
     const obsIdx = steps.findIndex((x) => x.k === 'obstacle'), showStop = obsIdx >= 0 && u.i >= obsIdx, rer = steps.some((x, k) => x.alt && k <= u.i);
-    const els = userMap.setMarkers([destMk(p, true), ...(showStop ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), originMk()]);
+    const els = userMap.setMarkers([destMk(p, true), ...(showStop ? [{ lat: 24.7676, lng: 46.6431, cls: 'stop', html: icon('i-stop') }] : []), homeMk(), originMk()]);
     S.meEl = els[els.length - 1];
     S.routePath = userMap.route(r.pts, rer ? 'chosen old' : 'chosen');
     if (rer) userMap.route(r.alt, 'alt', s.k === 'detour' && S.meAt && !S.meAt.alt ? 900 : 0);
     S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
-    const n = r.pts.length, endBox = r.obstacle ? [[24.7700, 46.6470], [24.7660, 46.6405]] : [r.pts[n - 2], r.pts[n - 1]];
+    const n = r.pts.length, endBox = r.obstacle ? [[24.7700, 46.6470], [24.7660, 46.6405]] : r.pts.slice(r.alightIdx || n - 2);
     if (s.zoom === 'start') userMap.fitLatLng([r.pts[0], r.pts[1]], 700, 7);
     else if (s.zoom === 'end') userMap.fitLatLng(endBox, 700, r.obstacle ? 9 : 6);
     else userMap.fitLatLng(r.pts, 700, 3);
@@ -290,7 +299,7 @@
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
   function addReport(rep) {
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
-    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; }
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; }
     else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
     toast(t('sent'));
   }
@@ -360,17 +369,26 @@
   });
 
   /* ===== واجهة الهيئة ===== */
-  const stChip = { confirmed: ['warn', 'i-stop'], pending: ['muted', 'i-clock'], temporary: ['info', 'i-hourglass'], forwarded: ['ok', 'i-check'] };
+  const stChip = { confirmed: ['ok', 'i-check'], pending: ['muted', 'i-clock'], temporary: ['warn', 'i-hourglass'], forwarded: ['info', 'i-arrow'] };
   const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door', other: 'i-more' };
+  /* ✦ قوة البلاغ: تكبر بدون أرقام */
+  function strengthChip(r) {
+    const n = r.merged || 1, lv = n >= 4 ? 3 : n >= 2 ? 2 : 1;
+    const merged = lv > 1 && !S.mergeShown && r.id === 'r1' ? 1 : lv; // قبل حركة الدمج الأولى
+    return `<span class="chip ai${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
+  }
   function aiSummary() {
-    const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + (r.merged || 1); });
+    const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + 1; });
     const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
     const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
     const lines = [];
     const live = S.reports.find((r) => r.fresh && r.status === 'pending');
     if (live) lines.push(t('aiNew', { p: L(place(live.place).name) }));
-    lines.push(t('aiTop', { i: t('is_' + top), n: by[top], p: L(worst.name) }));
-    return lines;
+    if (S.lastUp) lines.push(t('aiUp', { p: L(place(S.lastUp).name) }));
+    const metroLifts = new Set(S.reports.filter((r) => r.issue === 'elevator' && r.authority === 'metro' && r.status !== 'forwarded').map((r) => r.place));
+    if (metroLifts.size >= 2) lines.push(t('aiPattern'));
+    lines.push(t('aiTop', { i: t('is_' + top), p: L(worst.name) }));
+    return lines.slice(0, 2);
   }
   function renderKPIs() {
     const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
@@ -388,7 +406,7 @@
       <button class="row-main" type="button" aria-expanded="${!!open}" data-toggle="${r.id}">
         <span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
         <span class="row-txt"><b>${L(r.title)}</b><span>${L(place(r.place).name)} · ${r.time}</span></span>
-        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${r.merged > 1 && S.mergeShown ? `<span class="chip info">${icon('i-spark')}${r.merged === 2 ? t('merged') : t('mergedN', { n: r.merged })}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
+        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${strengthChip(r)}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
       </button>
       <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>
       ${open ? `<div class="row-more">

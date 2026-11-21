@@ -135,6 +135,13 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; padding: 3px 12px; border-radius: 999px; white-space: nowrap; }
 .chip .ic { width: 18px; height: 18px; }
 .chip.warn { color: var(--warn); background: var(--warn-bg); } .chip.ok { color: var(--ok); background: var(--ok-bg); } .chip.info { color: var(--info); background: var(--info-bg); } .chip.muted { color: var(--ink-2); background: var(--muted-bg); } .chip.new { color: #1E1E21; background: var(--accent); }
+.chip.ai { color: var(--ai); background: var(--ai-bg); }
+.chip.ai .dots { gap: 3px; } .chip.ai .dots i { width: 9px; height: 9px; }
+.chip.ai.grow .dots i.on:last-of-type { animation: pop .8s ease-out; }
+@keyframes pop { 0% { transform: scale(.2); } 60% { transform: scale(1.4); } 100% { transform: scale(1); } }
+.from .ic { color: var(--accent-ink); width: 20px; height: 20px; }
+.home-mk { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface); color: var(--accent-ink); border: 2px solid var(--accent); transform: translate(-50%, -50%); box-shadow: var(--shadow); }
+.home-mk .ic { width: 22px; height: 22px; }
 
 /* ✦ الذكاء الاصطناعي */
 .ai { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: var(--ai-bg); font-size: 16px; line-height: 1.6; }
@@ -271,7 +278,7 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 .rows { list-style: none; margin: 0; padding: 0; }
 .row { border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; align-items: center; transition: background .3s; overflow: hidden; }
 .row:last-child { border-bottom: 0; }
-.row.is-new { background: var(--ai-bg); box-shadow: inset 4px 0 0 var(--accent); }
+.row.is-new { background: var(--surface-2); box-shadow: inset 4px 0 0 var(--accent); }
 [dir="rtl"] .row.is-new { box-shadow: inset -4px 0 0 var(--accent); }
 .row.dup { opacity: .7; }
 .row.dup.merging { animation: merge .6s ease-in forwards; }
