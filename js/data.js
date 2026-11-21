@@ -57,13 +57,13 @@ window.SEED = {
 
   /* status: confirmed | pending | temporary | forwarded ; severity: high | medium */
   reports: [
-    { id: 'r1', place: 'rpark', issue: 'ramp', severity: 'high', status: 'confirmed', authority: 'sidewalk', time: '08:12', merged: 2,
+    { id: 'r1', place: 'rpark', issue: 'ramp', severity: 'high', status: 'confirmed', authority: 'sidewalk', time: '08:12', merged: 4,
       title: { ar: 'منحدر البوابة 3 مسدود بسيارة', en: 'Gate 3 ramp blocked by a car' }, checks: ['presence', 'second'] },
     { id: 'r2', place: 'kafd', issue: 'ramp', severity: 'medium', status: 'pending', authority: 'sidewalk', time: '09:40', merged: 1,
       title: { ar: 'عوائق على منحدر الممر الجانبي', en: 'Obstacles on the side walkway ramp' }, checks: ['presence'] },
-    { id: 'r3', place: 'rpark', issue: 'elevator', severity: 'medium', status: 'pending', authority: 'building', time: '10:05', merged: 1,
+    { id: 'r3', place: 'rpark', issue: 'elevator', severity: 'medium', status: 'pending', authority: 'building', time: '10:05', merged: 2,
       title: { ar: 'مصعد المواقف يتوقف', en: 'Parking elevator keeps stopping' }, checks: ['presence'] },
-    { id: 'r4', place: 'blvd', issue: 'ramp', severity: 'medium', status: 'temporary', authority: 'sidewalk', time: '10:30', merged: 1, expires: 6,
+    { id: 'r4', place: 'blvd', issue: 'ramp', severity: 'medium', status: 'temporary', authority: 'sidewalk', time: '10:30', merged: 3, expires: 6,
       title: { ar: 'حاجز صيانة عند المنحدر', en: 'Maintenance barrier at the ramp' }, checks: ['presence', 'behavior'] },
     { id: 'r5', place: 'pnu', issue: 'door', severity: 'medium', status: 'pending', authority: 'building', time: '11:18', merged: 1,
       title: { ar: 'الباب الآلي ما يفتح', en: "Automatic door won't open" }, checks: ['presence'] }

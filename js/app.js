@@ -22,13 +22,13 @@
   /* ===== الموثوقية: قواعد واضحة ===== */
   function penalty(r) {
     const high = r.severity === 'high'; let p = 0;
-    if (r.status === 'confirmed' || r.status === 'forwarded') p = high ? 3 : 2;
+    if (r.status === 'confirmed') p = high ? 3 : 2; // المحوّل للجهة ما ينقص الدرجة
     else if (r.status === 'pending') p = high ? 1.5 : 1;
     else if (r.status === 'temporary') p = 1;
     return p + Math.max(0, (r.merged || 1) - 1) * 0.5;
   }
   function score(pid) {
-    let s = 10 - Math.min(2, place(pid).faults90 * 0.3);
+    let s = 10 - Math.min(2, place(pid).faults90 * 0.3) - (place(pid).feats.elevator === 'none' ? 1 : 0); // مكان بدون مصعد ينقص 1
     S.reports.forEach((r) => { if (r.place === pid) s -= penalty(r); });
     return Math.max(0, Math.round(s * 10) / 10);
   }
@@ -130,7 +130,7 @@
         <div class="from">${icon('i-home')}${t('fromYou')}</div>
         <label class="search">${icon('i-search')}<input id="q" type="search" value="${u.q}" placeholder="${t('search')}" autocomplete="off"></label>
         <ul class="dest-list">${list.map((p) => `<li><button class="dest" data-dest="${p.id}" type="button">
-          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}${D.routes[p.id] && D.routes[p.id].demo ? ` <span class="chip ai demo-badge">${icon('i-spark')}${t('demoBadge')}</span>` : ''}</span></span>
+          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}</span></span>
           ${levelChip(p.id)}${featRow(p.id)}${icon('i-chev', 'ic dest-chev flip')}</button></li>`).join('') || `<li class="muted">${t('noResults')}</li>`}</ul>`;
     }
     const p = place(u.dest), r = D.routes[u.dest];
