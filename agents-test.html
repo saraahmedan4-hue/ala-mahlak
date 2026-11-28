@@ -72,6 +72,14 @@
     <div id="result" class="empty">ما صار شي للحين.</div>
   </section>
 
+  <section aria-labelledby="h-rep">
+    <h2 id="h-rep">وكيل البلاغات</h2>
+    <label for="rep-text">وش المشكلة؟ (بالكلام العادي)</label>
+    <input type="text" id="rep-text" value="فيه سيارة سادّة المنحدر عند البوابة، اسمي نورة ورقمي 0551234567">
+    <div class="row" style="margin-top:10px"><button id="rep-go" class="primary">جهّز البلاغ</button></div>
+    <div id="rep-card" class="empty" aria-live="polite" style="margin-top:12px">ما فيه بلاغ للحين.</div>
+  </section>
+
   <section aria-labelledby="h-opt">
     <h2 id="h-opt">المداخل (حالتها الحين)</h2>
     <ul id="options"></ul>
@@ -165,6 +173,7 @@
   function reset() {
     state = {}; current = {}; A.log.clear(); renderLog(); renderOptions();
     $('result').className = 'empty'; $('result').textContent = 'ما صار شي للحين.';
+    $('rep-card').className = 'empty'; $('rep-card').textContent = 'ما فيه بلاغ للحين.';
   }
 
   $('place').innerHTML = (window.SEED ? window.SEED.places : []).map((p) => '<option value="' + p.id + '">' + esc(p.name.ar) + '</option>').join('');
@@ -175,6 +184,27 @@
     A.CONFIG.llmOff = !A.CONFIG.llmOff;
     $('llm-toggle').textContent = A.CONFIG.llmOff ? 'رجّع النموذج' : 'اقطع النموذج';
   });
+  const ISSUE_AR = { elevator: 'مصعد', ramp: 'منحدر', door: 'مدخل', other: 'شي ثاني' };
+  const AUTH_AR = { metro: 'تشغيل المترو', sidewalk: 'البلدية (الأرصفة)', building: 'إدارة المبنى' };
+  async function draftReport() {
+    A.CONFIG.proxyUrl = $('proxy').value.trim(); A.CONFIG.anonKey = $('anon').value.trim();
+    $('rep-go').disabled = true; $('rep-card').className = 'empty'; $('rep-card').textContent = 'وكيل البلاغات يكتب…';
+    const r = await A.reports.draft({ place_id: placeId(), text: $('rep-text').value });
+    const s = SRC[r.source] || ['', ''];
+    $('rep-card').className = '';
+    $('rep-card').innerHTML =
+      '<div class="chips"><span class="chip">' + ISSUE_AR[r.issue] + '</span><span class="chip">' + (r.severity === 'high' ? 'يوقف الرحلة' : 'يأخر الرحلة') + '</span>' +
+      '<span class="chip ' + s[1] + '">' + s[0] + '</span>' + (r.removed_personal ? '<span class="chip guard">شلنا بيانات شخصية</span>' : '') + '</div>' +
+      '<p class="msg">' + esc(r.title.ar) + '</p>' +
+      '<p class="reason">' + esc(r.note) + '</p>' +
+      '<p class="reason">الجهة المقترحة: ' + AUTH_AR[r.authority] + '</p>' +
+      '<div class="row"><button id="rep-yes" class="primary">نعم، أرسل</button><button id="rep-no">لا شكراً</button></div>';
+    $('rep-yes').onclick = () => { A.log.add('وكيل البلاغات', 'الهيئة', 'أرسلت بلاغ «' + r.title.ar + '» بعد موافقة المستخدم (تجربة، ما انرسل فعلياً).', 'system'); $('rep-card').innerHTML = '<p class="msg">وصل البلاغ للجهة. شكراً.</p>'; };
+    $('rep-no').onclick = () => { A.log.add('وكيل البلاغات', 'المستخدم', 'ما أرسلت البلاغ، المستخدم رفض.', 'system'); $('rep-card').innerHTML = '<p class="reason">ما انرسل شي.</p>'; };
+    $('rep-go').disabled = false;
+  }
+  $('rep-go').addEventListener('click', draftReport);
+
   $('proxy').value = A.CONFIG.proxyUrl; $('anon').value = A.CONFIG.anonKey;
   renderOptions();
 })();
