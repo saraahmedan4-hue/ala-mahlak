@@ -312,8 +312,10 @@
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
   function addReport(rep, silent) {
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
-    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; }
-    else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
+    let saved;
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; saved = ex; }
+    else { saved = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: window.RT ? RT.id() : 'u' + (S.reports.length + 1), time: stamp(), fresh: true }); S.reports.push(saved); }
+    window.RT && RT.save(saved); // ربط لحظي
     if (!silent) toast(t('sent'));
   }
 
@@ -330,7 +332,7 @@
     else if (a === 'next') goStep(S.u.i + 1, true);
     else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
       const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
-      if (f) { f.status = 'confirmed'; f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); }
+      if (f) { f.status = 'confirmed'; f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); window.RT && RT.save(f); }
       toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
     }
     else if (a === 'no') goStep(S.u.i + 1, true);
@@ -459,6 +461,7 @@
     if (a) {
       const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
       r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
+      window.RT && RT.save(r); // ربط لحظي
       renderGov(false); return;
     }
     const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
@@ -472,6 +475,21 @@
     if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); [userMap, govMap].forEach((m) => m && m.setLang(S.lang)); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
     if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
   });
+
+  /* ===== الربط اللحظي (js/realtime.js) ===== */
+  function refresh() {
+    if (S.view === 'gov') renderGov(false);
+    else if (S.view === 'user' && S.u.mode !== 'trip') renderUser(false);
+  }
+  if (window.RT) {
+    RT.onLoad = (list) => { list.forEach((r) => { if (r.demo) r.draft = D.demoFault.draft; }); S.reports = list; S.mergeShown = true; refresh(); };
+    RT.onChange = (r) => {
+      const ex = S.reports.find((x) => x.id === r.id);
+      if (ex) { const grew = (r.merged || 1) > (ex.merged || 1); Object.assign(ex, r); if (grew) { ex.fresh = true; S.lastUp = ex.place; } }
+      else { if (r.demo) r.draft = D.demoFault.draft; r.fresh = true; S.reports.push(r); }
+      refresh();
+    };
+  }
 
   renderStatic();
 })();
