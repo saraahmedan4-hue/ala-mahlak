@@ -468,3 +468,7 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
   html { scroll-padding-bottom: 104px; }
   body[data-view="user"] .panel { padding-bottom: 112px; }
 }
+/* الزر الرئيسي بنفس شكل شارة «جديد»: إطار مرجاني هادي بدون تعبئة */
+.btn-primary { background: transparent; color: var(--ai); border: 2px solid rgba(255,138,119,.55); }
+.btn-primary:hover { filter: none; background: var(--ai-bg); }
+[data-theme="light"] .btn-primary { border-color: rgba(179,58,40,.45); }
