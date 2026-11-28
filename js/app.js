@@ -310,11 +310,14 @@
   }
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
-  function addReport(rep, silent) {
+  function addReport(rep, silent, remote) {
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
-    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; }
-    else S.reports.push(Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: 'u' + (S.reports.length + 1), time: stamp(), fresh: true }));
+    let out;
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; out = ex; }
+    else { out = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: rep.id || 'u' + (S.reports.length + 1), time: stamp(), fresh: true }); S.reports.push(out); }
     if (!silent) toast(t('sent'));
+    emit(ex ? 'merge' : 'add', out, remote);
+    return out;
   }
 
   $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
@@ -458,7 +461,7 @@
     const a = e.target.closest('[data-act-r]');
     if (a) {
       const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
-      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
+      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false; emit('status', r);
       renderGov(false); return;
     }
     const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
@@ -471,6 +474,23 @@
     if (a.dataset.act === 'switch') setView(S.view === 'gov' ? 'user' : 'gov');
     if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); [userMap, govMap].forEach((m) => m && m.setLang(S.lang)); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
     if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
+  });
+
+  /* ===== واجهة مشتركة للملفات الثانية (المزامنة، الوكلاء) =====
+     window.AlaMahlak.state       ← حالة التطبيق (البلاغات، الأماكن، الواجهة المفتوحة)
+     window.AlaMahlak.addReport() ← يضيف بلاغ (ويدمجه لو مكرر) ويحدّث الشاشة
+     window.AlaMahlak.refresh()   ← يعيد رسم الواجهة المفتوحة
+     window.AlaMahlak.onChange(fn) ← fn({ type: 'add'|'merge'|'status', report, remote, state }) مع كل تغيير */
+  const listeners = [];
+  function emit(type, report, remote) { listeners.forEach((fn) => { try { fn({ type, report, remote: !!remote, state: S }); } catch (e) { console.error(e); } }); }
+  function refresh() { if (S.view === 'gov') renderGov(false); else if (S.view === 'user' && S.u.mode !== 'trip') renderUser(true); }
+  window.AlaMahlak = Object.freeze({
+    get state() { return S; },
+    places: D.places,
+    score, level,
+    addReport(rep, opts = {}) { const r = addReport(rep, opts.silent !== false, opts.remote); refresh(); return r; },
+    refresh,
+    onChange(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; }
   });
 
   renderStatic();
