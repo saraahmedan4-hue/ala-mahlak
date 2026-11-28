@@ -1,0 +1,526 @@
+(function () {
+  'use strict';
+  const D = window.SEED, I = window.I18N;
+  const $ = (s, r = document) => r.querySelector(s);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* الحالة داخل الصفحة نفسها (مشتركة بين الواجهتين) */
+  const S = {
+    lang: 'ar', theme: 'dark', view: 'home',
+    reports: clone(D.reports), altRoutes: D.altRoutesToday, mergeShown: false,
+    modes: { map: true, sound: false, vib: true },
+    u: { mode: 'search', dest: null, i: 0, q: '', rated: false },
+    timers: [], open: {}
+  };
+  const t = (k, v) => { let s = I[S.lang][k] ?? I.ar[k] ?? k; if (v) for (const n in v) s = s.split('{' + n + '}').join(v[n]); return s; };
+  const L = (o) => (o && (o[S.lang] || o.ar)) || '';
+  const icon = (id, cls = 'ic') => `<svg class="${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
+  const place = (id) => D.places.find((p) => p.id === id);
+  const spark = (txt, cls = '') => `<div class="ai ${cls}">${icon('i-spark', 'ic ai-ic')}<span>${txt}</span></div>`;
+
+  /* ===== الموثوقية: قواعد واضحة ===== */
+  function penalty(r) {
+    const high = r.severity === 'high'; let p = 0;
+    if (r.status === 'confirmed') p = high ? 3 : 2; // المحوّل للجهة ما ينقص الدرجة
+    else if (r.status === 'pending') p = high ? 1.5 : 1;
+    else if (r.status === 'temporary') p = 1;
+    return p + Math.max(0, (r.merged || 1) - 1) * 0.5;
+  }
+  /* الدرجة من جاهزية المكان نفسه: 5 أشياء (مصعد، منحدر، مدخل، دورة مياه، مواقف)، كل وحدة 2 من 10
+     شغال = 2 · عليه بلاغ ينتظر = 1 · عطل مؤكد = 0 · ما فيه أصلاً = 0.6
+     ثم ينقص شوي لتكرار البلاغ (0.3 لكل تكرار) وسجل الأعطال (0.1 لكل عطل، بحد أقصى 0.5) */
+  function score(pid, skipId) { // skipId: الدرجة لو هالبلاغ ما كان موجود
+    let s = 0; const all = skipId ? S.reports.filter((r) => r.id !== skipId) : S.reports;
+    FEATS.forEach((f) => {
+      if (place(pid).feats[f] === 'none') { s += 0.6; return; }
+      const rs = all.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
+      s += !rs.length ? 2 : rs.some((r) => r.status === 'confirmed') ? 0 : 1;
+    });
+    all.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
+    s -= Math.min(0.5, place(pid).faults90 * 0.1);
+    return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
+  }
+  const level = (s) => (s >= 9 ? 'high' : s >= 4.5 ? 'medium' : 'low'); // عالية = كل شي أخضر
+  const dots = (lv) => { const n = lv === 'high' ? 3 : lv === 'medium' ? 2 : 1; return `<span class="dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; };
+  const levelChip = (pid, long) => { const lv = level(score(pid)); return `<span class="level ${lv}">${dots(lv)}${t((long ? 'lvl_' : 'lvlS_') + lv)}</span>`; };
+  const FEATS = ['elevator', 'ramp', 'entrance', 'toilet', 'parking'];
+  const issueFeat = { elevator: 'elevator', ramp: 'ramp', door: 'entrance' };
+  function feat(pid, f) {
+    const base = place(pid).feats[f]; if (base === 'none') return 'none';
+    return S.reports.some((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded') ? 'down' : base;
+  }
+  const featMark = { ok: '✓', down: '✕', none: '–' };
+
+  /* ===== عام ===== */
+  function renderStatic() {
+    const h = document.documentElement;
+    h.lang = S.lang; h.dir = S.lang === 'ar' ? 'rtl' : 'ltr'; h.dataset.theme = S.theme;
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-act=lang]').forEach((b) => { b.textContent = t('langBtn'); b.setAttribute('aria-label', t('langName')); b.lang = S.lang === 'ar' ? 'en' : 'ar'; });
+    document.querySelectorAll('[data-act=theme]').forEach((b) => b.setAttribute('aria-label', t('theme')));
+    $('#switchLabel').textContent = S.view === 'gov' ? t('viewUser') : t('viewGov');
+  }
+  function toast(msg) {
+    const el = $('#toast'); el.innerHTML = icon('i-check') + `<span>${msg}</span>`; el.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+  let lastFocus = null;
+  function openSheet(html) { lastFocus = document.activeElement; $('#sheetBody').innerHTML = html; $('#sheet').hidden = false; const f = $('#sheetBody button'); f && f.focus(); }
+  function closeSheet() { $('#sheet').hidden = true; lastFocus && lastFocus.focus && lastFocus.focus(); }
+
+  /* الاهتزاز والصوت */
+  const VIB = { blocked: [120, 80, 120, 80, 120], notready: [700], right: [150, 100, 150], left: [150, 100, 450], lift: [450, 100, 150], next: [80, 60, 80, 60, 80, 60, 80], arrive: [400, 150, 400] };
+  const pulses = (k) => VIB[k].filter((_, i) => i % 2 === 0).map((ms) => `<i style="width:${Math.max(8, ms / 14)}px"></i>`).join('');
+  function buzz(k) {
+    S.lastVib = k;
+    if (S.modes.vib && navigator.vibrate) { try { navigator.vibrate(VIB[k]); } catch (e) { /* ignore */ } }
+    const bar = $('#vibBar'); if (!bar) return;
+    bar.hidden = !S.modes.vib; bar.querySelector('.vib-p').innerHTML = pulses(k); bar.querySelector('.vib-l').textContent = t('vib_' + k);
+    const els = [...bar.querySelectorAll('.vib-p i')];
+    if (reduce()) { els.forEach((e) => e.classList.add('on')); return; }
+    let at = 0; VIB[k].forEach((ms, i) => { if (i % 2 === 0) { const e = els[i / 2]; setTimeout(() => e.classList.add('on'), at); setTimeout(() => e.classList.remove('on'), at + ms); } at += ms; });
+  }
+  /* يختار أوضح صوت موجود بالجهاز: سعودي أولاً، ثم عربي، والأصوات الطبيعية والرجالية لها أولوية */
+  function pickVoice() {
+    if (!('speechSynthesis' in window)) return null;
+    const ar = S.lang === 'ar', vs = speechSynthesis.getVoices().filter((v) => (v.lang || '').toLowerCase().startsWith(ar ? 'ar' : 'en'));
+    const score = (v) => (/sa/i.test(v.lang) ? 4 : 0) + (/natural|neural|premium|enhanced|online/i.test(v.name) ? 3 : 0) + (/google|microsoft/i.test(v.name) ? 1 : 0)
+      + (/maged|majed|hamed|naayf|tarik|shakir|fahed|male|daniel|guy/i.test(v.name) ? 2 : 0);
+    return vs.sort((a, b) => score(b) - score(a))[0] || null;
+  }
+  if ('speechSynthesis' in window) speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', () => { S.voice = null; });
+  function say(key) {
+    if (!S.modes.sound || !('speechSynthesis' in window)) return;
+    const text = I[S.lang]['say_' + key] || t('s_' + key);
+    try {
+      speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text), v = pickVoice();
+      if (v) u.voice = v; u.lang = v ? v.lang : (S.lang === 'ar' ? 'ar-SA' : 'en-US'); u.rate = 0.92; u.pitch = 0.95;
+      speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+  }
+
+  /* ===== التنقل بين الواجهات ===== */
+  let userMap = null, govMap = null;
+  const METRO = [D.routes.kafd.pts, D.routes.museum.pts];
+  function setView(v) {
+    S.view = v; document.body.dataset.view = v; renderStatic(); window.scrollTo(0, 0);
+    if (v === 'user') {
+      if (!userMap) userMap = MapView($('#userMap'), { pad: userPad, lines: METRO });
+      renderUser(true);
+    } else if (v === 'gov') {
+      if (!govMap) govMap = MapView($('#govMap'), { lines: METRO, pad: () => ({ t: 90, r: 110, b: 70, l: 110 }) });
+      renderGov(true);
+    }
+    const h = document.querySelector(v === 'home' ? '#homeName' : v === 'user' ? '#panel h1' : '#gov h1');
+    if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+  }
+  function userPad() {
+    const wide = matchMedia('(min-width: 900px)').matches, p = $('#panel');
+    if (wide) { const w = p.offsetWidth + 40; return S.lang === 'ar' ? { t: 90, r: w + 40, b: 90, l: 110 } : { t: 90, r: 110, b: 90, l: w + 40 }; }
+    return { t: 50, r: 60, b: 60, l: 60 };
+  }
+
+  /* ===== واجهة المستخدم ===== */
+  function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; }
+  const later = (fn, ms) => S.timers.push(setTimeout(fn, ms));
+  const featRow = (pid) => `<span class="feats">${FEATS.map((f) => { const s = feat(pid, f); return `<span class="feat ${s}" title="${t('f_' + f)}: ${t('fs_' + s)}">${icon('i-' + f)}<span class="sr">${t('f_' + f)}: ${t('fs_' + s)}</span></span>`; }).join('')}</span>`;
+  const topRow = (back) => `<div class="p-top">${back ? `<button class="icon-btn" data-u="back" type="button" aria-label="${t('back')}">${icon('i-arrow', 'ic flip')}</button>` : '<span></span>'}<span class="p-top-end">${S.u.mode === 'trip' ? `<button class="pill-btn" data-u="help" type="button">${icon('i-help')}<span>${t('help')}</span></button>` : ''}<button class="icon-btn" data-u="settings" type="button" aria-label="${t('settings')}">${icon('i-gear')}</button></span></div>`;
+  const stepper = (n) => `<div class="stepper" aria-label="${t('stepOf', { n })}">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}<span>${t('stepOf', { n })}</span></div>`;
+  const vibBar = `<div class="vib-bar" id="vibBar" hidden>${icon('i-vib')}<span class="vib-p" aria-hidden="true"></span><strong class="vib-l"></strong><button class="link-btn" data-u="vibinfo" type="button">؟</button></div>`;
+
+  function panelHTML() {
+    const u = S.u;
+    if (u.mode === 'search') {
+      const q = u.q.trim().toLowerCase();
+      const list = D.places.filter((p) => (!q || (p.name.ar + p.name.en + p.kind.ar + p.kind.en).toLowerCase().includes(q)));
+      return `${topRow(false)}
+        <h1 class="p-title">${t('where')}</h1>
+        <div class="from">${icon('i-home')}${t('fromYou')}</div>
+        <label class="search">${icon('i-search')}<input id="q" type="search" value="${u.q}" placeholder="${t('search')}" autocomplete="off"></label>
+        <ul class="dest-list">${list.map((p) => `<li><button class="dest" data-dest="${p.id}" type="button">
+          <span class="dest-main"><span class="dest-name">${L(p.name)}</span><span class="dest-kind">${L(p.kind)}</span></span>
+          ${levelChip(p.id)}${featRow(p.id)}${icon('i-chev', 'ic dest-chev flip')}</button></li>`).join('') || `<li class="muted">${t('noResults')}</li>`}</ul>`;
+    }
+    const p = place(u.dest), r = D.routes[u.dest];
+    if (u.mode === 'place') {
+      return `${topRow(true)}
+        <h1 class="p-title">${L(p.name)}</h1>
+        <div class="place-sub">${L(p.kind)} ${levelChip(p.id, true)}</div>
+        <section class="block"><h2>${t('readiness')}</h2><ul class="feat-list">${FEATS.map((f) => { const s = feat(p.id, f); return `<li class="${s}">${icon('i-' + f)}<span>${t('f_' + f)}</span><b>${featMark[s]} ${t('fs_' + s)}</b></li>`; }).join('')}</ul></section>
+        <section class="block"><h2>${t('yourRoute')}</h2>
+          <div id="aiLine">${spark(t('thinking'), 'thinking')}</div>
+          <div class="stats" id="stats" hidden>
+            <span>${icon('i-clock')}<b>${t('mins', { n: r.min })}</b></span><span>${icon('i-check')}${t('stepFree')}</span>
+            <span>${icon('i-elevator')}${t('lifts', { n: r.lifts })}</span><span>${icon('i-metro')}${L(r.line)}</span></div>
+        </section>
+        <div class="actions"><button class="btn btn-primary" data-u="start" type="button">${t('start')}${icon('i-arrow', 'ic flip')}</button>
+          <button class="btn btn-ghost" data-u="help" type="button">${icon('i-help')}${t('help')}</button></div>`;
+    }
+    /* الرحلة: خطوة بخطوة بزر «التالي» */
+    const steps = tripSteps(u.dest), i = u.i, s = steps[i], total = steps.length;
+    let body = '';
+    const nextBtn = (label, act = 'next') => `<div class="actions"><button class="btn btn-primary" data-u="${act}" type="button">${label}${icon('i-arrow', 'ic flip')}</button></div>`;
+    if (s.k === 'alert') body = `<span class="chip warn alert-chip">${icon('i-stop')}${t('alertChip')}</span>
+      <ol class="trace${S.fwd ? ' play' : ''}" aria-label="${t('traceTitle')}">${['tr1', 'tr2', 'tr3'].map((k, n) => `<li style="--i:${n}">${icon('i-spark', 'ic ai-ic')}<span>${t(k)}</span></li>`).join('')}</ol>
+      <p class="instruction calm">${t('alertCalm')}</p>
+      <div class="chips"><span class="chip info">${icon('i-clock')}${t('plus3')}</span><span class="chip muted">${icon('i-metro')}${t('twoStops')}</span></div>
+      ${nextBtn(t('next'))}`;
+    else if (s.k === 'confirm') body = `<div class="big-ic warn">${icon('i-elevator')}</div><p class="instruction">${t('confirmQ')}</p><p class="sub">${t('confirmSub')}</p>
+      <div class="actions"><button class="btn btn-primary" data-u="yes" type="button">${t('yesBroken')}</button><button class="btn btn-ghost" data-u="no" type="button">${t('notNoticed')}</button></div>`;
+    else if (s.k === 'arrive') body = `<div class="big-ic ok">${icon('i-check')}</div><p class="instruction">${t('arrived')}</p>` + (u.rated
+      ? `<p class="sub">${t('thanks')}</p><div class="actions"><button class="btn btn-primary" data-u="again" type="button">${t('again')}</button></div>`
+      : `<p class="sub">${t('how')}</p><div class="actions rate">${['r_comfy', 'r_ok', 'r_hard'].map((k) => `<button class="btn btn-ghost" data-u="rate" type="button">${t(k)}</button>`).join('')}</div>`);
+    else body = `<div class="big-ic${s.k === 'detour2' ? ' alt' : ''}">${icon(s.ic)}</div>
+      <p class="instruction">${t('s_' + s.k)}</p>
+      ${s.k === 'ride' ? `<p class="sub">${t('rideStops')}</p>${r.station ? `<div class="card-soft">${icon('i-sound')}<div><b>${t('announce')}</b><p>${t('announceText', { s: L(r.station) })}</p></div></div>` : ''}` : ''}
+      ${s.k === 'detour2' ? spark(t('rerouted')) : ''}
+      ${nextBtn(t('next'))}`;
+    return `${topRow(true)}<div class="stepper" aria-label="${t('stage' + s.stage)} ${i + 1}/${total}">${steps.map((_, k) => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="trip-dest"><b>${t('stage' + s.stage)}</b><span>${i + 1} / ${total}</span><span class="sep">·</span>${icon('i-flag')}${L(p.name)}</div>${body}${vibBar}`;
+  }
+
+  function renderUser(fit) {
+    $('#panel').innerHTML = panelHTML();
+    const q = $('#q'); if (q && S.u.focusQ) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    if (S.lastVib && S.u.mode === 'trip') { const b = $('#vibBar'); if (b) { b.hidden = !S.modes.vib; b.querySelector('.vib-p').innerHTML = pulses(S.lastVib); b.querySelector('.vib-l').textContent = t('vib_' + S.lastVib); b.querySelectorAll('i').forEach((i) => i.classList.add('on')); } }
+    if (fit) userMapScene();
+  }
+
+  const homeMk = () => ({ lat: D.origin.lat, lng: D.origin.lng, cls: 'home', html: `<span class="home-mk">${icon('i-home')}</span>` });
+  const originMk = () => ({ lat: D.origin.lat, lng: D.origin.lng, cls: 'me', html: '<span class="me-dot"></span>' });
+  const destMk = (p, active) => ({ lat: p.lat, lng: p.lng, cls: 'pin p-' + p.id + ' lab-' + p.lab + ' ' + level(score(p.id)) + (active ? ' active' : ''), label: L(p.name),
+    onClick: S.u.mode === 'search' ? () => pickDest(p.id) : null,
+    html: `<span class="pin-dot">${dots(level(score(p.id)))}</span><span class="pin-name">${L(p.name)}</span>` });
+
+  /* نسبة نقطة من المسار (حسب الطول) */
+  function fracAt(pts, idx) {
+    const d = (a, b) => Math.hypot(a[0] - b[0], (a[1] - b[1]) * 0.91);
+    let tot = 0, upto = 0; for (let k = 1; k < pts.length; k++) { const s = d(pts[k], pts[k - 1]); tot += s; if (k <= idx) upto += s; }
+    return upto / tot;
+  }
+  /* خطوات الرحلة لكل وجهة (stage = الخطوات الخمس في HANDOFF) */
+  function tripSteps(dest) {
+    const r = D.routes[dest];
+    const st = fracAt(r.pts, 1), al = r.alightIdx ? fracAt(r.pts, r.alightIdx) : 0.985;
+    const base = [
+      { k: 'walk', stage: 2, ic: 'i-walk', f: 0, zoom: 'start' },
+      { k: 'gates', stage: 2, ic: 'i-gates', f: st, vib: 'right', zoom: 'start' },
+      { k: 'lift', stage: 2, ic: 'i-lift-down', f: st, vib: 'lift', zoom: 'start' },
+      { k: 'ride', stage: 2, ic: 'i-metro', f: (st + al) / 2, zoom: 'all' },
+      { k: 'alight', stage: 2, ic: 'i-alight', f: al, vib: 'next', zoom: 'end' }
+    ];
+    if (r.demo) { // رحلة العرض: العطل يصير وهي في القطار
+      const n = r.pts.length;
+      return base.slice(0, 4).concat([
+        { k: 'alert', stage: 3, f: fracAt(r.pts, n - 3), vib: 'blocked', zoom: 'end', rer: true },
+        { k: 'alight', stage: 3, ic: 'i-alight', f: al, vib: 'next', zoom: 'near', rer: true },
+        { k: 'detour2', stage: 3, ic: 'i-turn-right', alt: true, vib: 'right', zoom: 'near', rer: true },
+        { k: 'confirm', stage: 4, alt: true, zoom: 'near', rer: true },
+        { k: 'arrive', stage: 5, alt: true, vib: 'arrive', zoom: 'near', rer: true }
+      ]);
+    }
+    return base.concat([
+      { k: 'exit', stage: 2, ic: 'i-lift-up', f: 1, vib: 'lift', zoom: 'end' },
+      { k: 'arrive', stage: 5, f: 1, vib: 'arrive', zoom: 'end' }
+    ]);
+  }
+
+  function userMapScene() {
+    const u = S.u; userMap.clearRoutes(); if (u.mode !== 'trip') S.lastZoom = null;
+    if (u.mode === 'search') {
+      userMap.setMarkers([...D.places.map((p) => destMk(p)), homeMk()]);
+      userMap.fitLatLng([[D.origin.lat, D.origin.lng], ...D.places.map((p) => [p.lat, p.lng])]);
+      return;
+    }
+    const p = place(u.dest), r = D.routes[u.dest];
+    if (u.mode === 'place') {
+      userMap.setMarkers([destMk(p, true), homeMk()]);
+      userMap.fitLatLng(r.pts, 700, 3);
+      thinkAnimation(r);
+      return;
+    }
+    const steps = tripSteps(u.dest), s = steps[u.i];
+    const rer = !!s.rer;
+    const els = userMap.setMarkers([destMk(p, true), ...(rer ? [{ lat: r.fault[0], lng: r.fault[1], cls: 'stop fault', html: `<span class="pulse"></span>${icon('i-stop')}` }] : []), homeMk(), originMk()]);
+    S.meEl = els[els.length - 1];
+    S.routePath = userMap.route(r.pts, rer ? 'chosen old' : 'chosen');
+    if (rer) userMap.route(r.alt, 'alt', s.k === 'alert' && S.fwd ? 1200 : 0);
+    S.altPath = rer ? userMap.route(r.alt, 'measure') : null; // مسار مخفي للقياس
+    const n = r.pts.length, endBox = r.demo ? r.pts.slice(n - 3).concat(r.alt) : r.pts.slice(r.alightIdx || n - 2);
+    // الكاميرا ثابتة طول الرحلة (نفس إطار صفحة المكان)، والنقطة بس اللي تمشي
+    if (S.lastZoom !== u.dest) { S.lastZoom = u.dest; userMap.fitLatLng(r.pts, 0, 3); }
+    moveMe(s.alt ? { alt: true, f: 1 } : { alt: false, f: s.f });
+  }
+  /* تحريك نقطتك بهدوء من مكانها للخطوة الجاية */
+  function pointAt(at) {
+    const path = at.alt ? S.altPath : S.routePath; if (!path) return null;
+    const pt = path.getPointAtLength(path.getTotalLength() * Math.min(1, at.f)); return [pt.x, pt.y];
+  }
+  function moveMe(to) {
+    if (!S.meEl) return;
+    let from = S.meAt || to;
+    if (to.alt && !from.alt) from = { alt: true, f: 0 };
+    if (!to.alt && from.alt) from = to;
+    S.meAt = to;
+    const a = pointAt(from), b = pointAt(to); if (!a || !b) return;
+    if (reduce() || (a[0] === b[0] && a[1] === b[1])) { userMap.moveMarker(S.meEl, 0, 0, b); return; }
+    const t0 = performance.now(), dur = 1100, el = S.meEl;
+    const step = (now) => {
+      if (el !== S.meEl) return;
+      const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      userMap.moveMarker(el, 0, 0, pointAt({ alt: to.alt, f: from.f + (to.f - from.f) * e }));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  /* ✦ لحظة التفكير: 3 مسارات، اثنين يبهتون ويبقى الأوثق */
+  function thinkAnimation(r) {
+    clearTimers();
+    const off = (k) => r.pts.map((p, i) => (i === 0 || i === r.pts.length - 1 ? p : [p[0] + k * 0.006 * Math.sin(i), p[1] - k * 0.008 * Math.cos(i * 1.3)]));
+    const c1 = userMap.route(off(1), 'cand', 700), c2 = userMap.route(off(-1), 'cand', 700), c3 = userMap.route(r.pts, 'cand', 700);
+    const done = () => {
+      [c1, c2].forEach((c) => c.classList.add('fade')); c3.classList.add('chosen');
+      const a = $('#aiLine'); if (a) a.innerHTML = spark(`${t('chose')} ${L(r.why)}`, 'done');
+      const s = $('#stats'); if (s) s.hidden = false;
+    };
+    if (reduce()) done(); else later(done, 1500);
+  }
+
+  function pickDest(id) { S.u = { ...S.u, mode: 'place', dest: id, focusQ: false }; renderUser(true); focusTitle(); }
+  function focusTitle() { const h = $('#panel .p-title, #panel .instruction'); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
+
+  function goStep(i, forward) {
+    clearTimers(); const steps = tripSteps(S.u.dest), s = steps[i];
+    S.fwd = forward; S.u.i = i; renderUser(true); focusTitle();
+    if (!forward) return;
+    if (s.vib) buzz(s.vib);
+    if (s.k === 'alert') { S.altRoutes += 4; addReport(clone(D.demoFault), true); } // ✦ النظام رصد العطل وحوّل 4 رحلات
+    say(s.k);
+  }
+  function startTrip() {
+    Object.assign(S.u, { mode: 'trip', i: 0, rated: false }); S.meAt = null;
+    goStep(0, true);
+  }
+  function typeInto(el, text, delay) {
+    if (!el) return; if (reduce()) { el.textContent = text; return; }
+    el.classList.add('typing'); let i = 0;
+    later(function step() { if (!el.isConnected) return; el.textContent = text.slice(0, ++i); if (i < text.length) later(step, 28); else el.classList.remove('typing'); }, delay);
+  }
+  function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
+  function addReport(rep, silent, remote) {
+    if (!silent && !remote && window.RT && !RT.allow()) { toast(t('tooMany')); return; } // حد البلاغات (أميرة)
+    const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
+    let out;
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; out = ex; }
+    else { out = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: rep.id || (window.RT ? RT.id() : 'u' + (S.reports.length + 1)), time: stamp(), fresh: true }); S.reports.push(out); }
+    if (!remote && window.RT) RT.save(out); // ربط لحظي (أميرة). البلاغ اللي جا من جهاز ثاني ما نرجع نحفظه
+    if (!silent) toast(t('sent'));
+    emit(ex ? 'merge' : 'add', out, remote);
+    return out;
+  }
+
+  $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
+  $('#panel').addEventListener('click', (e) => {
+    const d = e.target.closest('[data-dest]'); if (d) return pickDest(d.dataset.dest);
+    const b = e.target.closest('[data-u]'); if (!b) return;
+    const a = b.dataset.u;
+    if (a === 'back') { if (S.u.mode === 'trip' && S.u.i > 0) return goStep(S.u.i - 1, false); clearTimers(); S.u = { ...S.u, mode: S.u.mode === 'trip' ? 'place' : 'search', focusQ: false }; S.meAt = null; renderUser(true); focusTitle(); }
+    else if (a === 'start') startTrip();
+    else if (a === 'help') openSheet(`<h2 id="sheetTitle">${t('help')}</h2><p>${t('helpText')}</p><button class="btn btn-primary" data-close type="button">${t('ok')}</button>`);
+    else if (a === 'settings') openSettings();
+    else if (a === 'vibinfo') openVib();
+    else if (a === 'next') goStep(S.u.i + 1, true);
+    else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
+      const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
+      if (f) { f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); window.RT && RT.save(f); }
+      toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
+    }
+    else if (a === 'no') goStep(S.u.i + 1, true);
+    else if (a === 'rate') { S.u.rated = true; renderUser(false); focusTitle(); }
+    else if (a === 'again') { S.u = { mode: 'search', dest: null, i: 0, q: '', rated: false }; S.lastVib = null; S.meAt = null; renderUser(true); focusTitle(); }
+  });
+  function openSettings() {
+    const mb = (k, ic) => `<button class="mode" type="button" data-mode="${k}" aria-pressed="${S.modes[k]}">${icon('i-check', 'ic tick')}${icon(ic)}<span>${t('mode_' + k)}</span><span class="on-word">${t('active')}</span></button>`;
+    openSheet(`<h2 id="sheetTitle">${t('modesTitle')}</h2><div class="modes">${mb('map', 'i-map')}${mb('sound', 'i-sound')}${mb('vib', 'i-vib')}</div>
+      <button class="link-btn" data-open-vib type="button">${icon('i-vib')}${t('vibList')}</button>
+      <button class="btn btn-primary" data-close type="button">${t('close')}</button>`);
+  }
+  function openVib() {
+    openSheet(`<h2 id="sheetTitle">${t('vibList')}</h2><ul class="vib-list">${Object.keys(VIB).map((k) => `<li><b>${t('vib_' + k)}</b><span class="vib-p on" aria-hidden="true">${pulses(k)}</span><button class="btn btn-ghost btn-sm" data-try="${k}" type="button">${t('vibTry')}</button></li>`).join('')}</ul>
+      <button class="btn btn-primary" data-close type="button">${t('close')}</button>`);
+  }
+  $('#sheet').addEventListener('click', (e) => {
+    if (e.target.id === 'sheet' || e.target.closest('[data-close]')) return closeSheet();
+    const m = e.target.closest('[data-mode]'); if (m) { const k = m.dataset.mode; S.modes[k] = !S.modes[k]; m.setAttribute('aria-pressed', S.modes[k]); return; }
+    if (e.target.closest('[data-open-vib]')) return openVib();
+    const tr = e.target.closest('[data-try]'); if (tr && navigator.vibrate) { try { navigator.vibrate(VIB[tr.dataset.try]); } catch (er) { /* ignore */ } tr.closest('li').classList.add('flash'); setTimeout(() => tr.closest('li').classList.remove('flash'), 600); }
+    else if (tr) { tr.closest('li').classList.add('flash'); setTimeout(() => tr.closest('li').classList.remove('flash'), 600); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+
+  /* ===== زر «بلّغ» الدائم ===== */
+  const REP_TYPES = ['elevator', 'ramp', 'door', 'other'];
+  const REP_AUTH = { elevator: 'metro', ramp: 'sidewalk', door: 'building', other: 'building' };
+  function openReport() {
+    const u = S.u, steps = u.mode === 'trip' ? tripSteps(u.dest) : null;
+    const ctx = u.mode === 'place' || (steps && u.i >= steps.findIndex((x) => x.k === 'alight')) ? u.dest : 'pnu';
+    S.rep = { type: null, place: ctx, note: '' };
+    openSheet(`<h2 id="sheetTitle">${t('reportTitle')}</h2>
+      <textarea id="repNote" class="note" rows="3" placeholder="${t('notePh')}" aria-label="${t('notePh')}"></textarea>
+      <div class="block"><h2>${t('reportType')}</h2><div class="types">${REP_TYPES.map((k) => `<button class="type" type="button" data-rtype="${k}" aria-pressed="false">${icon(issueIc[k])}<span>${t('issue_' + k)}</span></button>`).join('')}</div></div>
+      <label class="block"><h2>${t('reportWhere')}</h2><select id="repPlace" class="select">${D.places.map((p) => `<option value="${p.id}"${p.id === ctx ? ' selected' : ''}>${L(p.name)}</option>`).join('')}</select></label>
+      ${spark(t('permNote'))}
+      <div class="sheet-actions"><button class="btn btn-primary" data-send type="button" disabled>${t('send')}</button><button class="btn btn-ghost" data-close type="button">${t('cancel')}</button></div>`);
+  }
+  $('#reportFab').addEventListener('click', () => { openReport(); const n = $('#repNote'); if (n) n.focus(); });
+  $('#sheet').addEventListener('change', (e) => { if (e.target.id === 'repPlace' && S.rep) S.rep.place = e.target.value; });
+  $('#sheet').addEventListener('input', (e) => { if (e.target.id === 'repNote' && S.rep) { S.rep.note = e.target.value.trim(); $('#sheet [data-send]').disabled = !(S.rep.type || S.rep.note); } });
+  $('#sheet').addEventListener('click', (e) => {
+    const ty = e.target.closest('[data-rtype]');
+    if (ty) { S.rep.type = ty.dataset.rtype; $('#sheet').querySelectorAll('[data-rtype]').forEach((b) => b.setAttribute('aria-pressed', b === ty)); $('#sheet [data-send]').disabled = false; return; }
+    if (e.target.closest('[data-send]') && S.rep && (S.rep.type || S.rep.note)) {
+      const k = S.rep.type || 'other', note = S.rep.note;
+      addReport({ place: S.rep.place, issue: k, severity: k === 'elevator' || k === 'ramp' ? 'high' : 'medium', authority: REP_AUTH[k], note,
+        title: k === 'other' && note ? { ar: note.slice(0, 60), en: note.slice(0, 60) } : { ar: I.ar['issue_' + k], en: I.en['issue_' + k] } });
+      S.rep = null; closeSheet();
+      if (S.u.mode !== 'trip') renderUser(true);
+    }
+  });
+
+  /* ===== واجهة الهيئة ===== */
+  const stChip = { confirmed: ['ok', 'i-check'], pending: ['muted', 'i-clock'], temporary: ['warn', 'i-hourglass'], forwarded: ['info', 'i-arrow'] };
+  const issueIc = { elevator: 'i-elevator', ramp: 'i-ramp', door: 'i-door', other: 'i-more' };
+  /* ✦ قوة البلاغ: تكبر بدون أرقام */
+  function strengthChip(r) {
+    const n = r.merged || 1, lv = n >= 4 ? 3 : n >= 2 ? 2 : 1;
+    const merged = lv > 1 && !S.mergeShown && r.id === 'r1' ? 1 : lv; // قبل حركة الدمج الأولى
+    return `<span class="chip str${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
+  }
+  function aiSummary() {
+    const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + 1; });
+    const top = Object.keys(by).sort((a, b) => by[b] - by[a])[0];
+    const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
+    const lines = [];
+    const live = S.reports.find((r) => r.fresh && r.status === 'pending');
+    const demo = S.reports.find((r) => r.demo);
+    if (demo) lines.push(t(demo.confirmedByRider ? 'aiDemoOk' : 'aiDemo'));
+    else if (live) lines.push(t('aiNew', { p: L(place(live.place).name) }));
+    if (S.lastUp) lines.push(t('aiUp', { p: L(place(S.lastUp).name) }));
+    const metroLifts = new Set(S.reports.filter((r) => r.issue === 'elevator' && r.authority === 'metro' && r.status !== 'forwarded').map((r) => r.place));
+    if (metroLifts.size >= 2) lines.push(t('aiPattern'));
+    lines.push(t('aiTop', { i: t('is_' + top), p: L(worst.name) }));
+    return lines.slice(0, 2);
+  }
+  function renderKPIs() {
+    const worst = D.places.slice().sort((a, b) => score(a.id) - score(b.id))[0];
+    $('#kpis').innerHTML = `
+      <div class="kpi"><span>${t('kpiReports')}</span><b>${S.reports.length}</b></div>
+      <div class="kpi"><span>${t('kpiAlt')}</span><b>${S.altRoutes}</b></div>
+      <div class="kpi"><span>${t('kpiWorst')}</span><b class="kpi-place">${L(worst.name)}</b><em>${score(worst.id).toFixed(1)}<small>/10</small></em></div>
+      <div class="kpi ai-card">${icon('i-spark', 'ic ai-ic')}<div><span>${t('aiTitle')}</span>${aiSummary().map((l) => `<p>${l}</p>`).join('')}</div></div>`;
+  }
+  /* بطاقة الهيئة (نفس التصميم لكل البلاغات): المكان + الحالة + الموثوقية + زرين (تأكيد · حوّل) */
+  function rowHTML(r, dup) {
+    const [tone, ic] = stChip[r.status];
+    const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
+    const s = score(r.place), lv = level(s), was = score(r.place, r.id);
+    const aiText = r.draft ? L(r.draft) + (r.confirmedByRider ? ' ' + t('riderConfirmed') : '') : '';
+    return `<li class="rcard${r.fresh ? ' is-new' : ''}${S.sel === r.id ? ' sel' : ''}${dup ? ' dup' : ''}" data-id="${r.id}" data-place="${r.place}">
+      <div class="rc-head"><span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
+        <div><h3>${L(r.title)}</h3><p>${icon('i-pin')}${L(place(r.place).name)} · ${r.time}</p></div></div>
+      <div class="chips">${r.fresh ? `<span class="chip new">${t('newBadge')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span>${strengthChip(r)}</div>
+      <div class="rc-rel"><span class="rc-score">${s.toFixed(1)}<small>/10</small></span><span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>${was !== s ? `<span class="rc-was">${t('wasShort', { n: was.toFixed(1) })}</span>` : ''}</div>
+      ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}
+      ${aiText ? `<p class="rc-ai">${icon('i-spark')}<span>${aiText}</span></p>` : ''}
+      ${r.status === 'temporary' ? `<p class="rc-exp">${t('expires', { h: r.expires })}</p>` : ''}
+      ${canApprove || canForward ? `<div class="rc-btns${canApprove ? '' : ' one'}">${canApprove ? `<button class="btn btn-ok" data-act-r="approve" data-id="${r.id}" type="button">${icon('i-check')}${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>` : ''}
+    </li>`;
+  }
+  const FILTERS = { all: () => true, new: (r) => r.fresh || r.status === 'pending' || r.status === 'temporary', confirmed: (r) => r.status === 'confirmed' };
+  function renderRows() {
+    const sev = { high: 0, medium: 1 };
+    const list = S.reports.slice().sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
+    const f = FILTERS[S.gFilter || 'all'], shown = list.filter(f);
+    $('#rows').innerHTML = shown.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown && f(r) ? rowHTML(r, true) : '')).join('') || `<li class="rc-empty">${t('noReports')}</li>`;
+    $('#repCount').textContent = S.reports.length;
+    $('#filters').innerHTML = Object.keys(FILTERS).map((k) => `<button type="button" data-filter="${k}" aria-pressed="${(S.gFilter || 'all') === k}">${t('flt_' + k)}</button>`).join('');
+    $('#govTabs').innerHTML = ['list', 'map'].map((k) => `<button type="button" data-gtab="${k}" aria-pressed="${(S.gTab || 'list') === k}">${k === 'list' ? `${t('reports')} (${S.reports.length})` : t('mapTab')}</button>`).join('');
+  }
+  function govMarkers() {
+    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv + (S.sel && (S.reports.find((r) => r.id === S.sel) || {}).place === p.id ? ' sel' : ''), onClick: () => selectPlace(p.id), label: `${L(p.name)} ${s.toFixed(1)}/10`,
+      html: `<span class="sc">${s.toFixed(1)}</span><span class="pin-name">${L(p.name)}</span>` }; }));
+    $('#legend').innerHTML = ['high', 'medium', 'low'].map((lv) => `<span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>`).join('');
+  }
+  function renderGov(fit) {
+    renderKPIs(); renderRows(); govMarkers();
+    if (fit) govMap.fitLatLng(D.places.map((p) => [p.lat, p.lng]), 0);
+    if (!S.mergeShown) setTimeout(() => {
+      const d = $('#rows .dup'); if (d) d.classList.add('merging');
+      setTimeout(() => { S.mergeShown = true; if (S.view === 'gov') renderRows(); }, reduce() ? 0 : 600);
+    }, 1400);
+  }
+  function selectPlace(pid) { // من الخريطة: يختار أول بلاغ للمكان ويوريه
+    const r = S.reports.find((x) => x.place === pid); if (!r) return;
+    S.sel = r.id; if (!FILTERS[S.gFilter || 'all'](r)) S.gFilter = 'all'; S.gTab = 'list'; $('#govGrid').dataset.tab = 'list';
+    renderRows(); govMarkers(); const c = $(`#rows [data-id="${r.id}"]`); if (c) c.scrollIntoView({ block: 'nearest', behavior: reduce() ? 'auto' : 'smooth' });
+  }
+  document.addEventListener('click', (e) => {
+    const fl = e.target.closest('[data-filter]'); if (fl) { S.gFilter = fl.dataset.filter; renderRows(); return; }
+    const gt = e.target.closest('[data-gtab]'); if (gt) { S.gTab = gt.dataset.gtab; $('#govGrid').dataset.tab = S.gTab; renderRows(); return; }
+  });
+  $('#rows').addEventListener('click', (e) => {
+    const a = e.target.closest('[data-act-r]');
+    if (a) {
+      const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
+      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
+      window.RT && RT.save(r); // ربط لحظي (أميرة)
+      emit('status', r);       // للملفات الثانية (سارة)
+      renderGov(false); return;
+    }
+    const c = e.target.closest('.rcard'); if (c && !c.classList.contains('dup')) { S.sel = c.dataset.id; renderRows(); govMarkers(); }
+  });
+
+  /* ===== أزرار عامة ===== */
+  document.addEventListener('click', (e) => {
+    const v = e.target.closest('[data-go-view]'); if (v) return setView(v.dataset.goView);
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'switch') setView(S.view === 'gov' ? 'user' : 'gov');
+    if (a.dataset.act === 'lang') { S.lang = S.lang === 'ar' ? 'en' : 'ar'; renderStatic(); [userMap, govMap].forEach((m) => m && m.setLang(S.lang)); if (S.view === 'user') renderUser(true); if (S.view === 'gov') renderGov(true); }
+    if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
+  });
+
+  /* ===== واجهة مشتركة للملفات الثانية (المزامنة، الوكلاء) =====
+     window.AlaMahlak.state       ← حالة التطبيق (البلاغات، الأماكن، الواجهة المفتوحة)
+     window.AlaMahlak.addReport() ← يضيف بلاغ (ويدمجه لو مكرر) ويحدّث الشاشة
+     window.AlaMahlak.refresh()   ← يعيد رسم الواجهة المفتوحة
+     window.AlaMahlak.onChange(fn) ← fn({ type: 'add'|'merge'|'status', report, remote, state }) مع كل تغيير */
+  const listeners = [];
+  function emit(type, report, remote) { listeners.forEach((fn) => { try { fn({ type, report, remote: !!remote, state: S }); } catch (e) { console.error(e); } }); }
+  function refresh() { if (S.view === 'gov') renderGov(false); else if (S.view === 'user' && S.u.mode !== 'trip') renderUser(true); }
+  window.AlaMahlak = Object.freeze({
+    get state() { return S; },
+    places: D.places,
+    score, level,
+    addReport(rep, opts = {}) { const r = addReport(rep, opts.silent !== false, opts.remote); refresh(); return r; },
+    refresh,
+    onChange(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; }
+  });
+
+  /* ===== الربط اللحظي (js/realtime.js) ===== */
+  if (window.RT) {
+    RT.onLoad = (list) => { list.forEach((r) => { if (r.demo) r.draft = D.demoFault.draft; }); S.reports = list; S.mergeShown = true; refresh(); };
+    RT.onChange = (r) => {
+      const ex = S.reports.find((x) => x.id === r.id);
+      let type = 'add', grew = false;
+      if (ex) { grew = (r.merged || 1) > (ex.merged || 1); Object.assign(ex, r); type = grew ? 'merge' : 'status'; if (grew) { ex.fresh = true; S.lastUp = ex.place; } }
+      else { if (r.demo) r.draft = D.demoFault.draft; r.fresh = true; S.reports.push(r); }
+      refresh();
+      emit(type, ex || r, true); // الوكلاء يسمعون التغيير اللي جا من جهاز ثاني
+    };
+  }
+
+  renderStatic();
+})();
