@@ -30,14 +30,14 @@
   /* الدرجة من جاهزية المكان نفسه: 5 أشياء (مصعد، منحدر، مدخل، دورة مياه، مواقف)، كل وحدة 2 من 10
      شغال = 2 · عليه بلاغ ينتظر = 1 · عطل مؤكد = 0 · ما فيه أصلاً = 0.6
      ثم ينقص شوي لتكرار البلاغ (0.3 لكل تكرار) وسجل الأعطال (0.1 لكل عطل، بحد أقصى 0.5) */
-  function score(pid) {
-    let s = 0;
+  function score(pid, skipId) { // skipId: الدرجة لو هالبلاغ ما كان موجود
+    let s = 0; const all = skipId ? S.reports.filter((r) => r.id !== skipId) : S.reports;
     FEATS.forEach((f) => {
       if (place(pid).feats[f] === 'none') { s += 0.6; return; }
-      const rs = S.reports.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
+      const rs = all.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
       s += !rs.length ? 2 : rs.some((r) => r.status === 'confirmed') ? 0 : 1;
     });
-    S.reports.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
+    all.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
     s -= Math.min(0.5, place(pid).faults90 * 0.1);
     return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
   }
@@ -333,7 +333,7 @@
     else if (a === 'next') goStep(S.u.i + 1, true);
     else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
       const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
-      if (f) { f.status = 'confirmed'; f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); }
+      if (f) { f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); }
       toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
     }
     else if (a === 'no') goStep(S.u.i + 1, true);
@@ -395,7 +395,7 @@
   function strengthChip(r) {
     const n = r.merged || 1, lv = n >= 4 ? 3 : n >= 2 ? 2 : 1;
     const merged = lv > 1 && !S.mergeShown && r.id === 'r1' ? 1 : lv; // قبل حركة الدمج الأولى
-    return `<span class="chip ai${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
+    return `<span class="chip str${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
   }
   function aiSummary() {
     const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + 1; });
@@ -420,22 +420,30 @@
       <div class="kpi"><span>${t('kpiWorst')}</span><b class="kpi-place">${L(worst.name)}</b><em>${score(worst.id).toFixed(1)}<small>/10</small></em></div>
       <div class="kpi ai-card">${icon('i-spark', 'ic ai-ic')}<div><span>${t('aiTitle')}</span>${aiSummary().map((l) => `<p>${l}</p>`).join('')}</div></div>`;
   }
+  /* صورة العائق: بديل مرسوم لين توصل صورة الفريق */
+  const photoHTML = () => `<div class="rc-photo"><svg viewBox="0 0 620 230" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="620" height="230" fill="#2d2d32"/><rect y="170" width="620" height="60" fill="#38383e"/><rect x="250" y="40" width="130" height="150" rx="8" fill="#45454c" stroke="#5a5a62" stroke-width="3"/><path d="M315 40v150" stroke="#5a5a62" stroke-width="3"/><rect x="275" y="70" width="80" height="34" rx="6" fill="#F2B860"/><path d="M210 190h210" stroke="#F2B860" stroke-width="6" stroke-dasharray="18 12"/></svg>
+    <span class="rc-tag">${icon('i-flag')}${t('photoTag')}</span><span class="rc-blur">${icon('i-spark')}${t('photoBlur')}</span></div>`;
+  /* بطاقة الهيئة: المكان + الصورة + الموثوقية + زرين (تأكيد · حوّل) */
   function rowHTML(r, dup) {
-    const [tone, ic] = stChip[r.status], open = S.open[r.id] && !dup;
+    const [tone, ic] = stChip[r.status];
     const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
-    const isNew = !!r.fresh;
-    return `<li class="row${isNew ? ' is-new' : ''}${dup ? ' dup' : ''}${open ? ' open' : ''}" data-id="${r.id}">
-      <button class="row-main" type="button" aria-expanded="${!!open}" data-toggle="${r.id}">
-        <span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
-        <span class="row-txt"><b>${L(r.title)}</b><span>${L(place(r.place).name)} · ${r.time}</span></span>
-        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${strengthChip(r)}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
-      </button>
-      <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>
-      ${open ? `<div class="row-more">
-        <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
-        <p><span class="muted">${t('authority')}:</span> <b>${L(D.authorities[r.authority])}</b> · <span class="muted">${t('sev_' + r.severity)}</span></p>
-        ${r.status === 'temporary' ? `<p class="muted">${t('expires', { h: r.expires })}</p>` : ''}
-        ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}${r.draft ? spark(`<b>${t('draft')}:</b> ${L(r.draft)}`) : ''}</div>` : ''}
+    const compact = !canApprove, isNew = !!r.fresh, s = score(r.place), lv = level(s), was = score(r.place, r.id);
+    const feats = FEATS.map((f) => { const st = feat(r.place, f); return `<span class="feat ${st}" title="${t('f_' + f)}: ${t('fs_' + st)}">${icon('i-' + f)}<span class="sr">${t('f_' + f)}: ${t('fs_' + st)}</span></span>`; }).join('');
+    const aiText = r.draft ? L(r.draft) + (r.confirmedByRider ? ' ' + t('riderConfirmed') : '') : '';
+    return `<li class="rcard${isNew ? ' is-new' : ''}${compact ? ' compact' : ''}${dup ? ' dup' : ''}" data-id="${r.id}">
+      ${r.photo && !compact ? photoHTML() : ''}
+      <div class="rc-body">
+        <div class="rc-head"><span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
+          <div><h3>${L(r.title)}</h3><p>${icon('i-pin')}${L(place(r.place).name)} · ${r.time}</p></div></div>
+        <div class="chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span>${strengthChip(r)}</div>
+        <div class="rc-rel"><div class="rc-score">${s.toFixed(1)}<small>/10</small></div>
+          <div class="rc-lv"><span class="level ${lv}">${dots(lv)}${t('lvl_' + lv)}</span>${!compact && was !== s ? `<span class="rc-was">${t('wasBefore', { n: was.toFixed(1) })}</span>` : ''}</div>
+          ${compact ? '' : `<span class="feats">${feats}</span>`}</div>
+        ${!compact && r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}
+        ${!compact && aiText ? spark(aiText) : ''}
+        ${r.status === 'temporary' ? `<p class="muted rc-exp">${t('expires', { h: r.expires })}</p>` : ''}
+        ${canApprove || canForward ? `<div class="rc-btns${canApprove ? '' : ' one'}">${canApprove ? `<button class="btn btn-ok" data-act-r="approve" data-id="${r.id}" type="button">${icon('i-check')}${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>` : ''}
+      </div>
     </li>`;
   }
   function renderRows() {
@@ -464,7 +472,6 @@
       r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false; emit('status', r);
       renderGov(false); return;
     }
-    const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
   });
 
   /* ===== أزرار عامة ===== */
