@@ -70,7 +70,7 @@ window.SEED = {
   ],
 
   /* العطل اللي يرصده النظام وسط رحلة العرض */
-  demoFault: { place: 'museum', issue: 'elevator', severity: 'high', status: 'pending', authority: 'metro', demo: true, photo: true,
+  demoFault: { place: 'museum', issue: 'elevator', severity: 'high', status: 'pending', authority: 'metro', demo: true,
     title: { ar: 'مصعد المخرج الرئيسي في محطة المتحف متوقف', en: 'Museum station main exit elevator stopped' },
     draft: { ar: 'مصعد المخرج الرئيسي في محطة المتحف الوطني تعطّل. حوّلت 4 رحلات للمخرج الغربي (منحدر، +3 دقائق).', en: 'The main exit elevator at National Museum station broke down. 4 trips moved to the west exit (ramp, +3 min).' },
     checks: ['log', 'behavior'] },

@@ -95,11 +95,12 @@
 
 <!-- واجهة الهيئة -->
 <main class="gov" id="gov">
-  <div class="gov-head"><h1 data-i18n="govTitle"></h1></div>
+  <h1 class="sr" data-i18n="govTitle"></h1>
   <section class="kpis" id="kpis"></section>
-  <div class="gov-grid">
+  <div class="gov-tabs" id="govTabs"></div>
+  <div class="gov-grid" id="govGrid" data-tab="list">
+    <section class="g-card g-list"><div class="g-head"><h2 data-i18n="reports"></h2><span class="count" id="repCount"></span><div class="filters" id="filters"></div></div><ol class="rows" id="rows"></ol></section>
     <section class="g-card g-map"><div class="map" id="govMap"></div><div class="legend" id="legend"></div></section>
-    <section class="g-card g-list"><div class="g-head"><h2 data-i18n="reports"></h2><span class="count" id="repCount"></span></div><ol class="rows" id="rows"></ol></section>
   </div>
 </main>
 

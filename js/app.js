@@ -420,40 +420,35 @@
       <div class="kpi"><span>${t('kpiWorst')}</span><b class="kpi-place">${L(worst.name)}</b><em>${score(worst.id).toFixed(1)}<small>/10</small></em></div>
       <div class="kpi ai-card">${icon('i-spark', 'ic ai-ic')}<div><span>${t('aiTitle')}</span>${aiSummary().map((l) => `<p>${l}</p>`).join('')}</div></div>`;
   }
-  /* صورة العائق: بديل مرسوم لين توصل صورة الفريق */
-  const photoHTML = () => `<div class="rc-photo"><svg viewBox="0 0 620 230" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="620" height="230" fill="#2d2d32"/><rect y="170" width="620" height="60" fill="#38383e"/><rect x="250" y="40" width="130" height="150" rx="8" fill="#45454c" stroke="#5a5a62" stroke-width="3"/><path d="M315 40v150" stroke="#5a5a62" stroke-width="3"/><rect x="275" y="70" width="80" height="34" rx="6" fill="#F2B860"/><path d="M210 190h210" stroke="#F2B860" stroke-width="6" stroke-dasharray="18 12"/></svg>
-    <span class="rc-tag">${icon('i-flag')}${t('photoTag')}</span><span class="rc-blur">${icon('i-spark')}${t('photoBlur')}</span></div>`;
-  /* بطاقة الهيئة: المكان + الصورة + الموثوقية + زرين (تأكيد · حوّل) */
+  /* بطاقة الهيئة (نفس التصميم لكل البلاغات): المكان + الحالة + الموثوقية + زرين (تأكيد · حوّل) */
   function rowHTML(r, dup) {
     const [tone, ic] = stChip[r.status];
     const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
-    const compact = !canApprove, isNew = !!r.fresh, s = score(r.place), lv = level(s), was = score(r.place, r.id);
-    const feats = FEATS.map((f) => { const st = feat(r.place, f); return `<span class="feat ${st}" title="${t('f_' + f)}: ${t('fs_' + st)}">${icon('i-' + f)}<span class="sr">${t('f_' + f)}: ${t('fs_' + st)}</span></span>`; }).join('');
+    const s = score(r.place), lv = level(s), was = score(r.place, r.id);
     const aiText = r.draft ? L(r.draft) + (r.confirmedByRider ? ' ' + t('riderConfirmed') : '') : '';
-    return `<li class="rcard${isNew ? ' is-new' : ''}${compact ? ' compact' : ''}${dup ? ' dup' : ''}" data-id="${r.id}">
-      ${r.photo && !compact ? photoHTML() : ''}
-      <div class="rc-body">
-        <div class="rc-head"><span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
-          <div><h3>${L(r.title)}</h3><p>${icon('i-pin')}${L(place(r.place).name)} · ${r.time}</p></div></div>
-        <div class="chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span>${strengthChip(r)}</div>
-        <div class="rc-rel"><div class="rc-score">${s.toFixed(1)}<small>/10</small></div>
-          <div class="rc-lv"><span class="level ${lv}">${dots(lv)}${t('lvl_' + lv)}</span>${!compact && was !== s ? `<span class="rc-was">${t('wasBefore', { n: was.toFixed(1) })}</span>` : ''}</div>
-          ${compact ? '' : `<span class="feats">${feats}</span>`}</div>
-        ${!compact && r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}
-        ${!compact && aiText ? spark(aiText) : ''}
-        ${r.status === 'temporary' ? `<p class="muted rc-exp">${t('expires', { h: r.expires })}</p>` : ''}
-        ${canApprove || canForward ? `<div class="rc-btns${canApprove ? '' : ' one'}">${canApprove ? `<button class="btn btn-ok" data-act-r="approve" data-id="${r.id}" type="button">${icon('i-check')}${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>` : ''}
-      </div>
+    return `<li class="rcard${r.fresh ? ' is-new' : ''}${S.sel === r.id ? ' sel' : ''}${dup ? ' dup' : ''}" data-id="${r.id}" data-place="${r.place}">
+      <div class="rc-head"><span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
+        <div><h3>${L(r.title)}</h3><p>${icon('i-pin')}${L(place(r.place).name)} · ${r.time}</p></div></div>
+      <div class="chips">${r.fresh ? `<span class="chip new">${t('newBadge')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span>${strengthChip(r)}</div>
+      <div class="rc-rel"><span class="rc-score">${s.toFixed(1)}<small>/10</small></span><span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>${was !== s ? `<span class="rc-was">${t('wasShort', { n: was.toFixed(1) })}</span>` : ''}</div>
+      ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}
+      ${aiText ? `<p class="rc-ai">${icon('i-spark')}<span>${aiText}</span></p>` : ''}
+      ${r.status === 'temporary' ? `<p class="rc-exp">${t('expires', { h: r.expires })}</p>` : ''}
+      ${canApprove || canForward ? `<div class="rc-btns${canApprove ? '' : ' one'}">${canApprove ? `<button class="btn btn-ok" data-act-r="approve" data-id="${r.id}" type="button">${icon('i-check')}${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>` : ''}
     </li>`;
   }
+  const FILTERS = { all: () => true, new: (r) => r.fresh || r.status === 'pending' || r.status === 'temporary', confirmed: (r) => r.status === 'confirmed' };
   function renderRows() {
     const sev = { high: 0, medium: 1 };
     const list = S.reports.slice().sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
-    $('#rows').innerHTML = list.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown ? rowHTML(r, true) : '')).join('');
+    const f = FILTERS[S.gFilter || 'all'], shown = list.filter(f);
+    $('#rows').innerHTML = shown.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown && f(r) ? rowHTML(r, true) : '')).join('') || `<li class="rc-empty">${t('noReports')}</li>`;
     $('#repCount').textContent = S.reports.length;
+    $('#filters').innerHTML = Object.keys(FILTERS).map((k) => `<button type="button" data-filter="${k}" aria-pressed="${(S.gFilter || 'all') === k}">${t('flt_' + k)}</button>`).join('');
+    $('#govTabs').innerHTML = ['list', 'map'].map((k) => `<button type="button" data-gtab="${k}" aria-pressed="${(S.gTab || 'list') === k}">${k === 'list' ? `${t('reports')} (${S.reports.length})` : t('mapTab')}</button>`).join('');
   }
   function govMarkers() {
-    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv, label: `${L(p.name)} ${s.toFixed(1)}/10`,
+    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv + (S.sel && (S.reports.find((r) => r.id === S.sel) || {}).place === p.id ? ' sel' : ''), onClick: () => selectPlace(p.id), label: `${L(p.name)} ${s.toFixed(1)}/10`,
       html: `<span class="sc">${s.toFixed(1)}</span><span class="pin-name">${L(p.name)}</span>` }; }));
     $('#legend').innerHTML = ['high', 'medium', 'low'].map((lv) => `<span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>`).join('');
   }
@@ -465,6 +460,15 @@
       setTimeout(() => { S.mergeShown = true; if (S.view === 'gov') renderRows(); }, reduce() ? 0 : 600);
     }, 1400);
   }
+  function selectPlace(pid) { // من الخريطة: يختار أول بلاغ للمكان ويوريه
+    const r = S.reports.find((x) => x.place === pid); if (!r) return;
+    S.sel = r.id; if (!FILTERS[S.gFilter || 'all'](r)) S.gFilter = 'all'; S.gTab = 'list'; $('#govGrid').dataset.tab = 'list';
+    renderRows(); govMarkers(); const c = $(`#rows [data-id="${r.id}"]`); if (c) c.scrollIntoView({ block: 'nearest', behavior: reduce() ? 'auto' : 'smooth' });
+  }
+  document.addEventListener('click', (e) => {
+    const fl = e.target.closest('[data-filter]'); if (fl) { S.gFilter = fl.dataset.filter; renderRows(); return; }
+    const gt = e.target.closest('[data-gtab]'); if (gt) { S.gTab = gt.dataset.gtab; $('#govGrid').dataset.tab = S.gTab; renderRows(); return; }
+  });
   $('#rows').addEventListener('click', (e) => {
     const a = e.target.closest('[data-act-r]');
     if (a) {
@@ -472,6 +476,7 @@
       r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false; emit('status', r);
       renderGov(false); return;
     }
+    const c = e.target.closest('.rcard'); if (c && !c.classList.contains('dup')) { S.sel = c.dataset.id; renderRows(); govMarkers(); }
   });
 
   /* ===== أزرار عامة ===== */
