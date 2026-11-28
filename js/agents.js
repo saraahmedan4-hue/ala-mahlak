@@ -49,6 +49,7 @@
 - إذا decision = "reroute"، اذكر اسم البديل (label) والوقت الإضافي بالدقائق.
 - صيغة محايدة تماماً: بدون فعل أمر مذكر أو مؤنث (لا «انزل» ولا «انزلي»). استخدم صيغ مثل «تم تحويل المسار…» و«الوصول بعد…».
 - بدون إيموجي، وبدون تفاصيل طبية، وبدون اعتذار طويل.
+- اكتب اسم المدخل (label) في message و log، ولا تكتب الـ id أبداً.
 
 ## السبب (reason)
 - جملة وحدة بالعربي البسيط، يفهمها أي شخص.
@@ -137,6 +138,15 @@
     return String(l || o.id);
   }
 
+  // لو النموذج كتب معرّف خام (مثل pnu_main) نبدله باسمه المفهوم
+  function relabel(text, options) {
+    let out = String(text || '');
+    (options || []).slice().sort((a, b) => b.id.length - a.id.length)
+      .forEach((o) => { out = out.split(o.id).join(o.label); });
+    return out;
+  }
+  const EMERGENCY = /حريق|دخان|طوارئ|إسعاف|اسعاف|إغماء|اغماء|نزيف|fire|smoke|emergency|ambulance/i;
+
   /* خيارات المكان: من data.js لو موجودة، وإلا التجريبية */
   function getOptions(placeId) {
     const p = (window.SEED && window.SEED.places || []).find((x) => x.id === placeId);
@@ -215,6 +225,14 @@
           { from: 'الرفيق', to: 'المستخدم', text: 'ما فيه بديل شغال، وجّهت لمكتب الخدمة و19933.' },
           { from: 'الرفيق', to: 'وكيل البلاغات', text: problem + ' بدون بديل (' + placeName(input.trip.place_id) + ')، البلاغ أولوية عالية.' }
         ]
+      };
+    }
+    if (ev.type === 'emergency') {
+      return {
+        decision: 'ask_help', target_id: null,
+        message: 'للطوارئ: الاتصال بالرقم 911، والتوجه لأقرب موظف أو مكتب الخدمة في المحطة.',
+        reason: 'الحالة طارئة، والأولوية للمساعدة الفورية مو للمسار.', report_needed: false,
+        log: [{ from: 'الرفيق', to: 'المستخدم', text: 'حالة طارئة: وجّهت للطوارئ 911 ومكتب الخدمة.' }]
       };
     }
     if (ev.type === 'delay') {
@@ -302,6 +320,14 @@
     req = req || {};
     const options = clone(req.options || getOptions(req.place_id));
     const ev = Object.assign({ type: 'other', option_id: null, text: '' }, req.event || {});
+    const KNOWN = PHYSICAL.concat(['delay', 'other', 'emergency']);
+    if (EMERGENCY.test(String(ev.text)) || EMERGENCY.test(String(ev.type))) ev.type = 'emergency';
+    if (!KNOWN.includes(ev.type)) ev.type = 'other';
+    // عائق على مكان مو في خطة الرحلة ما يغيّر المسار، والنص الحر ما يوصل للنموذج عشان ما يكرر أسماء مخترعة
+    if (PHYSICAL.includes(ev.type) && !options.some((o) => o.id === ev.option_id)) {
+      AgentLog.add('القواعد', 'الرفيق', 'العائق على مكان مو في خطة الرحلة، فما يغيّر المسار.', 'rules');
+      ev.type = 'other'; ev.option_id = null; ev.text = '';
+    }
     // العائق المادي يخلي المكان المتأثر معطّل
     if (PHYSICAL.includes(ev.type) && ev.option_id) {
       options.forEach((o) => { if (o.id === ev.option_id) o.status = 'broken'; });
@@ -313,7 +339,9 @@
     };
 
     const rules = rulesDecide(input);
-    const llm = await callLLM('companion', COMPANION_INSTRUCTIONS, input);
+    // الطوارئ ما ننتظر فيها النموذج
+    const llm = ev.type === 'emergency' ? { ok: false, why: 'حالة طارئة، القواعد ترد فوراً' }
+      : await callLLM('companion', COMPANION_INSTRUCTIONS, input);
 
     let result, source;
     if (llm.ok) {
@@ -328,7 +356,9 @@
       AgentLog.add('النظام', 'الرفيق', 'تحويل احتياطي: ' + llm.why + '، والرحلة تكمل بالقواعد.', 'rules');
     }
 
-    result.log.forEach((l) => AgentLog.add(l.from, l.to, l.text, source));
+    result.message = relabel(result.message, options);
+    result.reason = relabel(result.reason, options);
+    result.log.forEach((l) => AgentLog.add(l.from, l.to, relabel(l.text, options), source));
     result.target = options.find((o) => o.id === result.target_id) || null;
     result.source = source;
     result.options = options;
@@ -523,6 +553,8 @@ JSON فيه:
 5. reason: جملة وحدة بالعربي البسيط تشرح ليش هذا الخيار، بدون كلمات إنجليزية ولا أسماء حقول.
 6. message: جملة أو جملتين للمستخدم، بحد أقصى 25 كلمة، فيها الخيار والموثوقية بالكلمات (عالية/متوسطة/ضعيفة) والسبب المختصر. إذا الموثوقية ضعيفة أو ما فيه بديل، قلها بهدوء.
 7. صيغة محايدة تماماً: بدون تذكير أو تأنيث، وبدون أسئلة.
+8. في message و reason و log اكتب اسم الخيار (label)، ولا تكتب الـ id أبداً.
+9. لا تكتب كلمة «بصمت» للمستخدم. يكفي تقول إن فيه بديل جاهز.
 
 ## المخرجات
 JSON فقط:
@@ -616,7 +648,9 @@ JSON فقط:
         AgentLog.add('النظام', 'وكيل التخطيط', 'تحويل احتياطي: ' + llm.why + '، والخطة انكتبت بالقواعد.', 'rules');
       }
     }
-    result.log.forEach((l) => AgentLog.add(l.from, l.to, l.text, source));
+    result.message = relabel(result.message, options).replace(/\s*بصمت/g, '');
+    result.reason = relabel(result.reason, options);
+    result.log.forEach((l) => AgentLog.add(l.from, l.to, relabel(l.text, options), source));
 
     return {
       primary: options.find((o) => o.id === result.primary_id) || null,
