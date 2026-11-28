@@ -36,25 +36,69 @@
   const RT = { ready: false, id: uuid, onChange: null, onLoad: null };
   let db = null;
 
+  /* حد البلاغات من نفس الجهاز: 5 بالدقيقة (والقاعدة تحد 30 بالدقيقة للكل) */
+  const LIMIT = 5, sentAt = [];
+  RT.allow = function () {
+    const now = Date.now();
+    while (sentAt.length && now - sentAt[0] > 60000) sentAt.shift();
+    if (sentAt.length >= LIMIT) return false;
+    sentAt.push(now); return true;
+  };
+
   RT.save = async function (r) {
     if (!db) return;
     const { error } = await db.from(TABLE).upsert(toRow(r));
     if (error) console.warn('[RT] save failed', error.message);
   };
 
+  /* إعادة الديمو: تمسح البلاغات وترجع التجريبية، وكل الجوالات تعيد التحميل */
+  RT.reset = async function () {
+    if (!db) return location.reload();
+    const { error } = await db.rpc('reset_demo');
+    if (error) { console.warn('[RT] reset failed', error.message); return; }
+    await chan.send({ type: 'broadcast', event: 'reset', payload: {} });
+    location.reload();
+  };
+
+  /* زر صغير بالطرف: ضغطة طويلة (ثانيتين) تعيد الديمو */
+  function resetButton() {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = '↺'; b.setAttribute('aria-label', 'Reset demo (long press)');
+    b.title = 'اضغط مطولاً لإعادة الديمو';
+    b.style.cssText = 'position:fixed;bottom:6px;left:6px;z-index:9999;width:28px;height:28px;border-radius:50%;border:0;opacity:.25;background:#888;color:#fff;font-size:14px;cursor:pointer;touch-action:none';
+    let timer = null;
+    const down = (e) => { e.preventDefault(); b.style.opacity = '.9'; timer = setTimeout(() => { b.textContent = '…'; RT.reset(); }, 2000); };
+    const up = () => { clearTimeout(timer); b.style.opacity = '.25'; };
+    b.addEventListener('pointerdown', down);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => b.addEventListener(ev, up));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.body.appendChild(b);
+  }
+
+  let chan = null;
+  async function load() {
+    const { data, error } = await db.from(TABLE).select('*').order('created_at', { ascending: true });
+    if (error) { console.warn('[RT] load failed', error.message); return false; }
+    RT.onLoad && RT.onLoad(data.map(toApp));
+    return true;
+  }
+
   async function start() {
+    resetButton();
     if (!window.supabase || !window.supabase.createClient) { console.warn('[RT] supabase-js not loaded, offline mode'); return; }
     db = window.supabase.createClient(URL, KEY);
-    const { data, error } = await db.from(TABLE).select('*').order('created_at', { ascending: true });
-    if (error) { console.warn('[RT] load failed, offline mode', error.message); db = null; return; }
+    if (!(await load())) { console.warn('[RT] offline mode'); db = null; return; }
     RT.ready = true;
-    RT.onLoad && RT.onLoad(data.map(toApp));
-    db.channel('reports-live')
+    chan = db.channel('reports-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, (p) => {
         if (p.eventType === 'DELETE') return;
         RT.onChange && RT.onChange(toApp(p.new));
       })
+      .on('broadcast', { event: 'reset' }, () => location.reload())
       .subscribe((s) => console.info('[RT] channel', s));
+    /* إعادة اتصال: لما يرجع النت أو ترجع الصفحة للواجهة، نسحب آخر حالة */
+    window.addEventListener('online', load);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   }
 
   window.RT = RT;

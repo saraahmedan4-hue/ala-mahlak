@@ -311,6 +311,7 @@
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
   function addReport(rep, silent) {
+    if (!silent && window.RT && !RT.allow()) { toast(t('tooMany')); return; } // حد البلاغات
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
     let saved;
     if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; saved = ex; }
