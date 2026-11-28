@@ -15,8 +15,10 @@
 
   /* ---------- 1) الإعدادات: هنا بس نغيّر لما يجهز الوسيط ---------- */
   const CONFIG = {
-    proxyUrl: '',      // رابط الوسيط من أميرة: https://<project>.supabase.co/functions/v1/llm
-    anonKey: '',       // مفتاح Supabase العام (anon). مو مفتاح النموذج! مفتاح النموذج في أسرار Supabase بس.
+    // الوسيط: Supabase Edge Function باسم llm (الكود في supabase/functions/llm/index.ts)
+    proxyUrl: 'https://wdfpufpvmxhkupiykcrb.supabase.co/functions/v1/llm',
+    // المفتاح العام (publishable) عادي يكون في الكود. مفتاح النموذج في أسرار Supabase بس.
+    anonKey: 'sb_publishable_5MHyh6W8AxnLGBdCx4ccGQ_tluMrbgI',
     timeoutMs: 6000,   // لو الرد تأخر أكثر من كذا نكمل بالقواعد
     llmOff: false      // زر «اقطع النموذج» في العرض يخليها true
   };
@@ -71,8 +73,8 @@
 {"decision":"reroute","target_id":"kafd_west","message":"المصعد الشرقي متوقف. تم تحويل المسار للمدخل الغربي، وفيه مصعد شغال. التأخير 4 دقائق بس.","reason":"المدخل الشرقي معطّل، والغربي شغال وأقرب بديل.","report_needed":true,"log":[{"from":"الرفيق","to":"المستخدم","text":"حوّلت المسار للمدخل الغربي (+4 دقائق)."},{"from":"الرفيق","to":"وكيل البلاغات","text":"عطل مصعد في المدخل الشرقي لمحطة KAFD، جهّز بلاغ للموافقة."}]}`;
 
   /* ---------- 3) خيارات تجريبية لكل مكان ----------
-     تُستخدم لين تضيف أميرة options في data.js بنفس الشكل:
-     { id, label, extra_min, transfers, lifts, status }
+     تُستخدم لين تضيف أميرة options في data.js بشكلها:
+     { id, label: { ar, en }, extra_min, transfers, lifts, status: 'ok' | 'down' }
      كل القيم هنا تجريبية (مو بيانات تشغيل حقيقية). */
   const DEMO_OPTIONS = {
     pnu: [
@@ -123,9 +125,15 @@
     return p ? (p.name && p.name.ar) || p.id : placeId;
   }
 
-  // أميرة ممكن تكتب الحالة ok أو working، نوحّدها
+  // شكل أميرة: status = 'ok' | 'down'. نوحّدها إلى working | broken
   function normStatus(s) {
     return ['ok', 'working', 'open'].includes(String(s).toLowerCase()) ? 'working' : 'broken';
+  }
+  // شكل أميرة: label = { ar, en }. ناخذ العربي
+  function labelText(o) {
+    const l = o.label != null ? o.label : o.name;
+    if (l && typeof l === 'object') return String(l.ar || l.en || o.id);
+    return String(l || o.id);
   }
 
   /* خيارات المكان: من data.js لو موجودة، وإلا التجريبية */
@@ -134,7 +142,7 @@
     const src = (p && Array.isArray(p.options) && p.options.length) ? p.options : (DEMO_OPTIONS[placeId] || []);
     return src.map((o) => ({
       id: String(o.id),
-      label: String(o.label || o.name || o.id),
+      label: labelText(o),
       extra_min: Number(o.extra_min) || 0,
       transfers: Number(o.transfers) || 0,
       lifts: Number(o.lifts) || 0,
@@ -234,7 +242,7 @@
     const timer = setTimeout(() => ctrl.abort(), CONFIG.timeoutMs);
     try {
       const headers = { 'Content-Type': 'application/json' };
-      if (CONFIG.anonKey) { headers.Authorization = 'Bearer ' + CONFIG.anonKey; headers.apikey = CONFIG.anonKey; }
+      if (CONFIG.anonKey) headers.apikey = CONFIG.anonKey;
       const res = await fetch(CONFIG.proxyUrl, {
         method: 'POST', headers: headers, signal: ctrl.signal,
         body: JSON.stringify({ agent: agent, instructions: instructions, event: payload })

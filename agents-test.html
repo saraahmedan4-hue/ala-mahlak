@@ -89,10 +89,10 @@
       <button id="reset" class="primary">إعادة التجربة</button>
     </div>
     <details style="margin-top:10px">
-      <summary>إعدادات الوسيط (لما يجهز)</summary>
+      <summary>إعدادات الوسيط</summary>
       <label for="proxy">رابط الوسيط</label>
       <input type="text" id="proxy" placeholder="https://<project>.supabase.co/functions/v1/llm" dir="ltr">
-      <label for="anon">مفتاح Supabase العام (anon) · مو مفتاح النموذج</label>
+      <label for="anon">مفتاح Supabase العام (publishable) · مو مفتاح النموذج</label>
       <input type="text" id="anon" dir="ltr">
     </details>
   </section>
@@ -175,6 +175,7 @@
     A.CONFIG.llmOff = !A.CONFIG.llmOff;
     $('llm-toggle').textContent = A.CONFIG.llmOff ? 'رجّع النموذج' : 'اقطع النموذج';
   });
+  $('proxy').value = A.CONFIG.proxyUrl; $('anon').value = A.CONFIG.anonKey;
   renderOptions();
 })();
 </script>
