@@ -25,6 +25,9 @@ create policy "read"   on public.reports for select using (true);
 create policy "insert" on public.reports for insert with check (true);
 create policy "update" on public.reports for update using (true);
 
+-- صلاحيات الدخول للموقع (بدونها يطلع permission denied)
+grant select, insert, update on public.reports to anon, authenticated;
+
 -- تحديث لحظي بين الجوالات
 alter publication supabase_realtime add table public.reports;
 
