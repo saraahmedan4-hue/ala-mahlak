@@ -454,3 +454,17 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 /* رسالة التأكيد تحت عشان ما تغطي شي */
 .toast { top: auto; bottom: 24px; }
 @media (max-width: 900px) { .toast { bottom: 88px; top: auto; } }
+
+/* مراجعة الوصول: كل زر في الواجهات 56 بكسل على الأقل */
+.icon-btn { width: 56px; height: 56px; }
+.pill-btn { min-height: 56px; }
+.vib-bar .link-btn { min-width: 56px; min-height: 56px; justify-content: center; border-radius: 50%; font-size: 20px; text-decoration: none; }
+.lockup-sm { min-height: 56px; }
+.bar { height: 80px; }
+@media (min-width: 901px) { .user, .gov { height: calc(100vh - 80px); height: calc(100dvh - 80px); } }
+@media (max-width: 640px) { .bar { height: 76px; } .bar .pill-btn { width: 56px; padding: 0; justify-content: center; } }
+/* الجوال: زر «بلّغ» الثابت ما يغطي آخر عنصر */
+@media (max-width: 900px) {
+  html { scroll-padding-bottom: 104px; }
+  body[data-view="user"] .panel { padding-bottom: 112px; }
+}
