@@ -135,9 +135,9 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; padding: 3px 12px; border-radius: 999px; white-space: nowrap; }
 .chip .ic { width: 18px; height: 18px; }
 .chip.warn { color: var(--warn); background: var(--warn-bg); } .chip.ok { color: var(--ok); background: var(--ok-bg); } .chip.info { color: var(--info); background: var(--info-bg); } .chip.muted { color: var(--ink-2); background: var(--muted-bg); } .chip.new { color: #1E1E21; background: var(--accent); }
-.chip.ai { color: var(--ai); background: var(--ai-bg); }
-.chip.ai .dots { gap: 3px; } .chip.ai .dots i { width: 9px; height: 9px; }
-.chip.ai.grow .dots i.on:last-of-type { animation: pop .8s ease-out; }
+.chip.str { color: var(--ai); background: var(--ai-bg); }
+.chip.str .dots { gap: 3px; } .chip.str .dots i { width: 9px; height: 9px; }
+.chip.str.grow .dots i.on:last-of-type { animation: pop .8s ease-out; }
 @keyframes pop { 0% { transform: scale(.2); } 60% { transform: scale(1.4); } 100% { transform: scale(1); } }
 .from .ic { color: var(--accent-ink); width: 20px; height: 20px; }
 .home-mk { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface); color: var(--accent-ink); border: 2px solid var(--accent); transform: translate(-50%, -50%); box-shadow: var(--shadow); }
@@ -306,6 +306,38 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); }
 .checks li::before { content: '✓ '; color: var(--ok); font-weight: 700; }
 
+/* بطاقة الهيئة */
+.rows { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.rcard { list-style: none; background: var(--surface-2); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; }
+.rcard.is-new { box-shadow: inset -5px 0 0 var(--accent); }
+[dir="ltr"] .rcard.is-new { box-shadow: inset 5px 0 0 var(--accent); }
+.rcard.dup { opacity: .6; }
+.rcard.dup.merging { animation: merge .6s ease-in forwards; }
+.rc-photo { position: relative; height: 190px; background: #2d2d32; }
+.rc-photo svg { width: 100%; height: 100%; display: block; }
+.rc-tag, .rc-blur { position: absolute; display: inline-flex; gap: 6px; align-items: center; font-size: 14px; padding: 4px 12px; border-radius: 999px; background: rgba(30,30,33,.85); color: #C9C6C0; }
+.rc-tag { top: 12px; inset-inline-start: 12px; } .rc-blur { bottom: 12px; inset-inline-start: 12px; color: #FF8A77; }
+.rc-tag .ic, .rc-blur .ic { width: 16px; height: 16px; }
+.rc-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.rc-head { display: flex; gap: 12px; align-items: flex-start; }
+.rc-head h3 { margin: 0; font-size: 20px; line-height: 1.4; font-weight: 600; }
+.rc-head p { margin: 2px 0 0; font-size: 16px; color: var(--ink-2); display: flex; gap: 4px; align-items: center; }
+.rc-head p .ic { width: 18px; height: 18px; }
+.rc-rel { display: flex; align-items: center; gap: 16px; background: var(--surface); border-radius: 16px; padding: 12px 16px; flex-wrap: wrap; }
+.rc-score { font-size: 36px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.rc-score small { font-size: 16px; color: var(--ink-2); font-weight: 500; }
+.rc-lv { display: flex; flex-direction: column; gap: 4px; flex: 1; align-items: flex-start; min-width: 140px; }
+.rc-was { font-size: 15px; color: var(--ink-2); }
+.rc-rel .feat { width: 32px; height: 32px; background: var(--surface-2); }
+.rc-rel .feat .ic { width: 18px; height: 18px; }
+.rc-exp { font-size: 15px; }
+.rc-btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+.rc-btns.one { grid-template-columns: 1fr; }
+.rc-btns .btn { min-height: 56px; font-size: 17px; white-space: normal; line-height: 1.3; }
+.btn-ok { background: var(--ok); color: #1E1E21; }
+[data-theme="light"] .btn-ok { color: #FBFAF7; }
+.rcard.compact .rc-body { gap: 12px; }
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* أحجام */
@@ -330,3 +362,95 @@ body[data-view="gov"] #home, body[data-view="gov"] #user { display: none; }
   .p-title { font-size: 26px; }
   .toast { top: 76px; width: calc(100% - 32px); justify-content: center; border-radius: 16px; }
 }
+
+/* ===== واجهة الهيئة v2: شاشة وحدة متناسقة (لابتوب) + تبويبات (جوال) ===== */
+.gov { max-width: none; padding: 16px 24px 20px; gap: 16px; }
+.kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2fr); gap: 12px; }
+.kpi { padding: 12px 16px; border-radius: 16px; gap: 0; justify-content: center; }
+.kpi > span { font-size: 14px; }
+.kpi > b { font-size: 30px; line-height: 1.25; }
+.kpi > b.kpi-place { font-size: 20px; }
+.kpi em, .kpi em small { font-size: 14px; }
+.ai-card { gap: 10px; align-items: flex-start; }
+.ai-card span { font-size: 14px; }
+.ai-card p { font-size: 14px; line-height: 1.6; margin: 0; }
+.ai-card .ai-ic { width: 20px; height: 20px; margin-top: 2px; }
+.gov-tabs { display: none; }
+.gov-grid { grid-template-columns: 440px minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.g-card { border-radius: 20px; display: flex; flex-direction: column; min-height: 0; }
+.g-head { padding: 12px 16px; gap: 8px; flex: none; }
+.g-head h2 { font-size: 16px; }
+.count { font-size: 13px; }
+.filters { margin-inline-start: auto; display: flex; gap: 6px; }
+.filters button { border: 0; font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); cursor: pointer; min-height: 30px; }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 600; }
+.rows { padding: 12px; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; }
+.g-map { position: relative; }
+.g-map .map { height: auto; flex: 1; min-height: 0; }
+.legend { top: 12px; inset-inline-end: 12px; inset-inline-start: auto; }
+.legend .level { font-size: 12px; padding: 2px 10px; }
+
+/* بطاقة البلاغ: مقاسات وحدة لكل البطاقات */
+.rcard { flex: none; padding: 12px 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 9px; cursor: pointer; box-shadow: none; }
+.rcard.is-new, [dir="ltr"] .rcard.is-new { box-shadow: none; border-color: rgba(255,138,119,.5); }
+.rcard.sel { outline: 2px solid var(--ai); outline-offset: -1px; }
+.rc-head { display: flex; gap: 10px; align-items: flex-start; }
+.rc-head .row-ic { width: 32px; height: 32px; border-radius: 10px; grid-row: auto; }
+.rc-head .row-ic .ic { width: 18px; height: 18px; }
+.rc-head h3 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.45; }
+.rc-head p { margin: 0; font-size: 13px; color: var(--ink-2); display: flex; gap: 4px; align-items: center; }
+.rc-head p .ic { width: 15px; height: 15px; }
+.rcard .chips { gap: 6px; }
+.rcard .chip { font-size: 12.5px; padding: 2px 9px; gap: 5px; }
+.rcard .chip .ic { width: 14px; height: 14px; }
+.rcard .chip.new { color: var(--ai); background: transparent; border: 1px solid rgba(255,138,119,.5); }
+.chip.str .dots i { width: 8px; height: 8px; border-width: 1.5px; }
+.rc-rel { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 10px; padding: 7px 10px; }
+.rc-score { font-size: 22px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.rc-score small { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.rc-rel .level { font-size: 12.5px; padding: 1px 10px; gap: 6px; }
+.rc-rel .level .dots i { width: 8px; height: 8px; border-width: 1.5px; }
+.rc-was { font-size: 12.5px; color: var(--ink-2); }
+.rc-ai { margin: 0; display: flex; gap: 8px; font-size: 13px; line-height: 1.6; background: var(--ai-bg); border-radius: 10px; padding: 7px 10px; }
+.rc-ai .ic { width: 16px; height: 16px; color: var(--ai); flex: none; margin-top: 3px; }
+.rc-exp, .rcard .note-view { margin: 0; font-size: 13px; color: var(--ink-2); }
+.rc-btns { display: grid; grid-template-columns: 1fr 1.5fr; gap: 8px; }
+.rc-btns.one { grid-template-columns: 1fr; }
+.rc-btns .btn { min-height: 40px; height: auto; font-size: 13.5px; padding: 6px 12px; gap: 6px; white-space: normal; line-height: 1.3; border-width: 1.5px; }
+.rc-btns .btn .ic { width: 16px; height: 16px; }
+.rc-empty { list-style: none; color: var(--ink-2); font-size: 14px; padding: 16px; text-align: center; }
+.mv-mk.score.sel .sc { box-shadow: 0 0 0 6px rgba(255,138,119,.35), var(--shadow); }
+.mv-mk.score { cursor: pointer; }
+
+/* لابتوب: الصفحة على قد الشاشة، والبطاقات تنزل جوا عمودها بس */
+@media (min-width: 901px) {
+  body[data-view="gov"] { overflow: hidden; }
+  .gov { height: calc(100vh - 72px); height: calc(100dvh - 72px); display: flex; flex-direction: column; }
+  .kpis { flex: none; }
+  .gov-grid { flex: 1; min-height: 0; }
+  .g-list, .g-map { height: 100%; }
+}
+@media (min-width: 901px) and (max-width: 1200px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ai-card { grid-column: 1 / -1; }
+  .gov-grid { grid-template-columns: 380px minmax(0, 1fr); }
+}
+/* جوال وتابلت: تبويب «البلاغات | الخريطة» بدل ما يكونون فوق بعض */
+@media (max-width: 900px) {
+  .gov { padding: 12px; gap: 12px; }
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .kpi { padding: 8px 10px; }
+  .kpi > b { font-size: 22px; } .kpi > b.kpi-place { font-size: 15px; } .kpi > span, .kpi em { font-size: 12px; }
+  .ai-card { grid-column: 1 / -1; }
+  .gov-tabs { display: flex; background: var(--surface); border-radius: 999px; padding: 4px; gap: 4px; }
+  .gov-tabs button { flex: 1; border: 0; background: none; color: var(--ink-2); font-size: 15px; font-weight: 600; padding: 9px; border-radius: 999px; cursor: pointer; min-height: 44px; }
+  .gov-tabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .gov-grid { grid-template-columns: 1fr; }
+  .gov-grid[data-tab="list"] .g-map, .gov-grid[data-tab="map"] .g-list { display: none; }
+  .g-map .map { height: 62vh; flex: none; }
+  .rows { overflow: visible; }
+  .g-head { flex-wrap: wrap; }
+}
+/* رسالة التأكيد تحت عشان ما تغطي شي */
+.toast { top: auto; bottom: 24px; }
+@media (max-width: 900px) { .toast { bottom: 88px; top: auto; } }
