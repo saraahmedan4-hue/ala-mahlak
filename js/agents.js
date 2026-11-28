@@ -1,7 +1,7 @@
 /* ============================================================
    agents.js · وكلاء «على مهلك» (المسؤولة: الذكاء الاصطناعي)
    ------------------------------------------------------------
-   فيه الحين: «الرفيق» (أثناء الرحلة) و«وكيل البلاغات» (بعد العائق).
+   فيه الحين: «وكيل التخطيط» (قبل الرحلة) و«الرفيق» (أثناء الرحلة) و«وكيل البلاغات» (بعد العائق).
    - يسأل النموذج اللغوي (Gemini) عن طريق الوسيط (proxy) عند أميرة.
    - يتحقق من الرد: أي مكان مو في القائمة يُرفض.
    - لو النموذج طاح أو تأخر أو الوسيط مو جاهز: يكمل بالقواعد (الفشل الآمن).
@@ -468,13 +468,173 @@ JSON فقط بهذا الشكل:
     };
   }
 
+
+  /* ============================================================
+     وكيل التخطيط: قبل الرحلة
+     ------------------------------------------------------------
+     - القواعد تشيل أي مدخل/مسار غير آمن (معطّل). هذا القرار الحساس ما يلمسه النموذج.
+     - القواعد تحسب الموثوقية بنفس معادلة app.js بالضبط (0-10 + عالية/متوسطة/ضعيفة).
+     - النموذج يختار من الآمن حسب احتياج المستخدم، ويجهّز بديل، ويكتب السبب.
+     - الحماية: الأساسي والبديل لازم يكونون من الآمن، وغير متشابهين.
+     ============================================================ */
+  const FEATS = ['elevator', 'ramp', 'entrance', 'toilet', 'parking'];
+  const ISSUE_FEAT = { elevator: 'elevator', ramp: 'ramp', door: 'entrance' };
+  const LEVEL_AR = { high: 'عالية', medium: 'متوسطة', low: 'ضعيفة' };
+
+  function currentReports() {
+    const live = window.AlaMahlak && window.AlaMahlak.state && window.AlaMahlak.state.reports;
+    return Array.isArray(live) ? live : ((window.SEED && window.SEED.reports) || []);
+  }
+  // نفس score() و level() في app.js
+  function reliability(placeId, reports) {
+    const p = (window.SEED && window.SEED.places || []).find((x) => x.id === placeId);
+    if (!p) return { score: 0, level: 'low', issues: [] };
+    const rs = (reports || currentReports()).filter((r) => r.place === placeId && r.status !== 'forwarded');
+    let s = 0;
+    FEATS.forEach((f) => {
+      if (p.feats[f] === 'none') { s += 0.6; return; }
+      const fr = rs.filter((r) => ISSUE_FEAT[r.issue] === f);
+      s += !fr.length ? 2 : fr.some((r) => r.status === 'confirmed') ? 0 : 1;
+    });
+    rs.forEach((r) => { s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!ISSUE_FEAT[r.issue]) s -= 0.5; });
+    s -= Math.min(0.5, (p.faults90 || 0) * 0.1);
+    const score = Math.max(0, Math.min(10, Math.round(s * 10) / 10));
+    return {
+      score: score,
+      level: score >= 9 ? 'high' : score >= 4.5 ? 'medium' : 'low',
+      issues: rs.map((r) => ({ issue: r.issue, status: r.status, merged: r.merged || 1 }))
+    };
+  }
+
+  const PLANNER_INSTRUCTIONS = `أنت «وكيل التخطيط» في منصة «على مهلك» لمستخدمي الكراسي المتحركة في مترو الرياض. قبل الرحلة تختار المدخل أو المسار الأساسي، وتجهّز بديل بصمت، وتسلّم الخطة لـ«الرفيق».
+
+## المدخلات
+JSON فيه:
+- destination: اسم الوجهة.
+- need: احتياج المستخدم (no_stairs، more_time، companion).
+- safe_options: الخيارات الآمنة بس (القواعد شالت المعطّل). لكل خيار: id، label، extra_min، transfers، lifts.
+- reliability: درجة موثوقية المكان محسوبة مسبقاً (score من 10، و level)، ومعها البلاغات المفتوحة (issues).
+
+## القواعد
+1. primary_id لازم يكون id من safe_options حرفياً. لا تخترع أي مكان.
+2. بدون احتياج خاص: اختر الأقل extra_min. إذا need فيها more_time: اختر الأقل transfers حتى لو أطول.
+3. backup_id: ثاني أفضل خيار من safe_options، ومختلف عن primary_id. إذا ما فيه غير خيار واحد: backup_id = null.
+4. لا تغيّر درجة الموثوقية. اشرحها بس.
+5. reason: جملة وحدة بالعربي البسيط تشرح ليش هذا الخيار، بدون كلمات إنجليزية ولا أسماء حقول.
+6. message: جملة أو جملتين للمستخدم، بحد أقصى 25 كلمة، فيها الخيار والموثوقية بالكلمات (عالية/متوسطة/ضعيفة) والسبب المختصر. إذا الموثوقية ضعيفة أو ما فيه بديل، قلها بهدوء.
+7. صيغة محايدة تماماً: بدون تذكير أو تأنيث، وبدون أسئلة.
+
+## المخرجات
+JSON فقط:
+{"primary_id":"...","backup_id":"..." أو null,"reason":"...","message":"...","log":[{"from":"وكيل التخطيط","to":"الرفيق","text":"سلّمت الخطة: الأساسي … والبديل … جاهز"}]}`;
+
+  function plannerRules(input) {
+    const safe = input.safe_options;
+    const needs = input.need || [];
+    const lv = LEVEL_AR[input.reliability.level];
+    if (!safe.length) {
+      return {
+        primary_id: null, backup_id: null,
+        reason: 'كل المداخل المعروفة عليها عائق الحين.',
+        message: 'ما فيه مدخل آمن متاح الحين لـ' + input.destination + '. مكتب الخدمة أو الرقم الموحد 19933 يساعد.',
+        log: [{ from: 'وكيل التخطيط', to: 'المستخدم', text: 'ما لقيت مسار آمن، وجّهت لمكتب الخدمة.' }]
+      };
+    }
+    const sorted = safe.slice().sort((a, b) => needs.includes('more_time')
+      ? (a.transfers - b.transfers) || (a.extra_min - b.extra_min)
+      : (a.extra_min - b.extra_min) || (a.transfers - b.transfers));
+    const p = sorted[0], b = sorted[1] || null;
+    const why = needs.includes('more_time') && p.transfers === 0 ? 'لأن ما فيه تحويلات، وهذا أريح'
+      : (p.extra_min === 0 ? 'لأنه أقصر طريق آمن' : 'لأنه أقل تأخير بين المسارات الآمنة');
+    return {
+      primary_id: p.id, backup_id: b ? b.id : null,
+      reason: 'اخترت ' + p.label + ' ' + why + '.',
+      message: 'المسار عبر ' + p.label + '، والموثوقية ' + lv + '. ' + (b ? 'فيه بديل جاهز لو صار شي.' : 'ما فيه بديل ثاني، والرفيق يتابع الرحلة.'),
+      log: [
+        { from: 'وكيل التخطيط', to: 'المستخدم', text: 'المسار عبر ' + p.label + ' (الموثوقية ' + lv + ').' },
+        { from: 'وكيل التخطيط', to: 'الرفيق', text: 'سلّمت الخطة: الأساسي ' + p.label + (b ? '، والبديل ' + b.label + ' جاهز بصمت.' : '، وما فيه بديل.') }
+      ]
+    };
+  }
+
+  function checkPlan(reply, input, rules) {
+    const problems = [];
+    if (!reply || typeof reply !== 'object') return { ok: false, problems: ['الرد مو JSON'] };
+    const ids = input.safe_options.map((o) => o.id);
+    if (!ids.length) return { ok: false, problems: ['ما فيه خيار آمن'] };
+    if (!ids.includes(reply.primary_id)) problems.push('الأساسي مو من الخيارات الآمنة: ' + reply.primary_id);
+    const backup = reply.backup_id == null ? null : reply.backup_id;
+    if (backup !== null && (!ids.includes(backup) || backup === reply.primary_id)) problems.push('البديل غلط: ' + backup);
+    if (backup === null && ids.length > 1) problems.push('ما جهّز بديل مع إن فيه');
+    if (typeof reply.message !== 'string' || !reply.message.trim() || reply.message.length > 240) problems.push('الرسالة فاضية أو طويلة');
+    if (problems.length) return { ok: false, problems: problems };
+    return {
+      ok: true,
+      value: {
+        primary_id: reply.primary_id, backup_id: backup,
+        reason: typeof reply.reason === 'string' && reply.reason.trim() ? reply.reason.trim() : rules.reason,
+        message: reply.message.trim(),
+        log: Array.isArray(reply.log) && reply.log.length
+          ? reply.log.slice(0, 3).map((l) => ({ from: 'وكيل التخطيط', to: String(l.to || 'الرفيق'), text: String(l.text || '').slice(0, 160) }))
+          : rules.log
+      }
+    };
+  }
+
+  /* الدالة الرئيسية لوكيل التخطيط
+     مثال: Agents.planner.plan({ place_id: 'pnu', need: ['no_stairs', 'more_time'] })
+     يرجّع: { primary, backup, reliability: {score, level, level_ar}, reason, message, source, options } */
+  async function plannerPlan(req) {
+    req = req || {};
+    const options = clone(req.options || getOptions(req.place_id));
+    const rel = reliability(req.place_id, req.reports);
+    const input = {
+      destination: placeName(req.place_id),
+      need: req.need || ['no_stairs'],
+      safe_options: options.filter((o) => o.status === 'working')
+        .map((o) => ({ id: o.id, label: o.label, extra_min: o.extra_min, transfers: o.transfers, lifts: o.lifts })),
+      reliability: { score: rel.score, level: rel.level, issues: rel.issues }
+    };
+    const removed = options.length - input.safe_options.length;
+    if (removed) AgentLog.add('القواعد', 'وكيل التخطيط', 'شلت ' + removed + ' من الخيارات لأنها غير آمنة (معطّلة).', 'rules');
+
+    const rules = plannerRules(input);
+    let result, source;
+    if (!input.safe_options.length) {
+      result = rules; source = 'rules';  // ما نسأل النموذج إذا ما فيه شي آمن
+    } else {
+      const llm = await callLLM('planner', PLANNER_INSTRUCTIONS, input);
+      if (llm.ok) {
+        const checked = checkPlan(llm.json, input, rules);
+        if (checked.ok) { result = checked.value; source = 'llm'; }
+        else {
+          result = rules; source = 'guard';
+          AgentLog.add('الحماية', 'وكيل التخطيط', 'رفضت رد النموذج (' + checked.problems.join('، ') + ') واستخدمت القواعد.', 'guard');
+        }
+      } else {
+        result = rules; source = 'rules';
+        AgentLog.add('النظام', 'وكيل التخطيط', 'تحويل احتياطي: ' + llm.why + '، والخطة انكتبت بالقواعد.', 'rules');
+      }
+    }
+    result.log.forEach((l) => AgentLog.add(l.from, l.to, l.text, source));
+
+    return {
+      primary: options.find((o) => o.id === result.primary_id) || null,
+      backup: options.find((o) => o.id === result.backup_id) || null,
+      reliability: { score: rel.score, level: rel.level, level_ar: LEVEL_AR[rel.level] },
+      reason: result.reason, message: result.message,
+      source: source, options: options
+    };
+  }
+
   /* ---------- 10) نكشفها لباقي الملفات ---------- */
   window.Agents = {
     CONFIG: CONFIG,
-    INSTRUCTIONS: { companion: COMPANION_INSTRUCTIONS, reports: REPORTS_INSTRUCTIONS },
+    INSTRUCTIONS: { companion: COMPANION_INSTRUCTIONS, reports: REPORTS_INSTRUCTIONS, planner: PLANNER_INSTRUCTIONS },
     log: AgentLog,
     getOptions: getOptions,
     companion: { decide: companionDecide, rules: rulesDecide },
-    reports: { draft: reportsDraft, rules: reportsRules, scrub: scrubPII }
+    reports: { draft: reportsDraft, rules: reportsRules, scrub: scrubPII },
+    planner: { plan: plannerPlan, rules: plannerRules, reliability: reliability }
   };
 })();

@@ -50,6 +50,8 @@
     <label for="place">الوجهة</label>
     <select id="place"></select>
     <label><input type="checkbox" id="more-time"> أحتاج وقت أطول</label>
+    <div class="row" style="margin-top:10px"><button id="plan-go" class="primary">خطّط الرحلة</button></div>
+    <div id="plan-card" class="empty" aria-live="polite" style="margin-top:12px">ما فيه خطة للحين.</div>
   </section>
 
   <section aria-labelledby="h-ev">
@@ -174,6 +176,7 @@
     state = {}; current = {}; A.log.clear(); renderLog(); renderOptions();
     $('result').className = 'empty'; $('result').textContent = 'ما صار شي للحين.';
     $('rep-card').className = 'empty'; $('rep-card').textContent = 'ما فيه بلاغ للحين.';
+    $('plan-card').className = 'empty'; $('plan-card').textContent = 'ما فيه خطة للحين.';
   }
 
   $('place').innerHTML = (window.SEED ? window.SEED.places : []).map((p) => '<option value="' + p.id + '">' + esc(p.name.ar) + '</option>').join('');
@@ -184,6 +187,24 @@
     A.CONFIG.llmOff = !A.CONFIG.llmOff;
     $('llm-toggle').textContent = A.CONFIG.llmOff ? 'رجّع النموذج' : 'اقطع النموذج';
   });
+  const LV_CLS = { high: 'llm', medium: 'rules', low: 'guard' };
+  async function plan() {
+    A.CONFIG.proxyUrl = $('proxy').value.trim(); A.CONFIG.anonKey = $('anon').value.trim();
+    $('plan-go').disabled = true; $('plan-card').className = 'empty'; $('plan-card').textContent = 'وكيل التخطيط يقارن المسارات…';
+    const r = await A.planner.plan({ place_id: placeId(), options: opts(), need: $('more-time').checked ? ['no_stairs', 'more_time'] : ['no_stairs'] });
+    if (r.primary) current[placeId()] = r.primary.id;
+    const s = SRC[r.source] || ['', ''];
+    $('plan-card').className = '';
+    $('plan-card').innerHTML =
+      '<div class="chips"><span class="chip ' + LV_CLS[r.reliability.level] + '">الموثوقية ' + r.reliability.level_ar + ' · ' + r.reliability.score + '/10</span>' +
+      '<span class="chip ' + s[1] + '">' + s[0] + '</span></div>' +
+      '<p class="msg">' + esc(r.message) + '</p>' +
+      '<p class="reason">السبب: ' + esc(r.reason) + '</p>' +
+      '<p class="reason">الأساسي: ' + esc(r.primary ? r.primary.label : 'ما فيه') + ' · البديل: ' + esc(r.backup ? r.backup.label : 'ما فيه') + '</p>';
+    renderOptions(); $('plan-go').disabled = false;
+  }
+  $('plan-go').addEventListener('click', plan);
+
   const ISSUE_AR = { elevator: 'مصعد', ramp: 'منحدر', door: 'مدخل', other: 'شي ثاني' };
   const AUTH_AR = { metro: 'تشغيل المترو', sidewalk: 'البلدية (الأرصفة)', building: 'إدارة المبنى' };
   async function draftReport() {
