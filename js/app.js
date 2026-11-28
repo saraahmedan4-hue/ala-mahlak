@@ -311,10 +311,12 @@
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
   function addReport(rep, silent, remote) {
+    if (!silent && !remote && window.RT && !RT.allow()) { toast(t('tooMany')); return; } // حد البلاغات (أميرة)
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
     let out;
     if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; out = ex; }
-    else { out = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: rep.id || 'u' + (S.reports.length + 1), time: stamp(), fresh: true }); S.reports.push(out); }
+    else { out = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: rep.id || (window.RT ? RT.id() : 'u' + (S.reports.length + 1)), time: stamp(), fresh: true }); S.reports.push(out); }
+    if (!remote && window.RT) RT.save(out); // ربط لحظي (أميرة). البلاغ اللي جا من جهاز ثاني ما نرجع نحفظه
     if (!silent) toast(t('sent'));
     emit(ex ? 'merge' : 'add', out, remote);
     return out;
@@ -333,7 +335,7 @@
     else if (a === 'next') goStep(S.u.i + 1, true);
     else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
       const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
-      if (f) { f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); }
+      if (f) { f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); window.RT && RT.save(f); }
       toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
     }
     else if (a === 'no') goStep(S.u.i + 1, true);
@@ -473,7 +475,9 @@
     const a = e.target.closest('[data-act-r]');
     if (a) {
       const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
-      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false; emit('status', r);
+      r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
+      window.RT && RT.save(r); // ربط لحظي (أميرة)
+      emit('status', r);       // للملفات الثانية (سارة)
       renderGov(false); return;
     }
     const c = e.target.closest('.rcard'); if (c && !c.classList.contains('dup')) { S.sel = c.dataset.id; renderRows(); govMarkers(); }
@@ -504,6 +508,19 @@
     refresh,
     onChange(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; }
   });
+
+  /* ===== الربط اللحظي (js/realtime.js) ===== */
+  if (window.RT) {
+    RT.onLoad = (list) => { list.forEach((r) => { if (r.demo) r.draft = D.demoFault.draft; }); S.reports = list; S.mergeShown = true; refresh(); };
+    RT.onChange = (r) => {
+      const ex = S.reports.find((x) => x.id === r.id);
+      let type = 'add', grew = false;
+      if (ex) { grew = (r.merged || 1) > (ex.merged || 1); Object.assign(ex, r); type = grew ? 'merge' : 'status'; if (grew) { ex.fresh = true; S.lastUp = ex.place; } }
+      else { if (r.demo) r.draft = D.demoFault.draft; r.fresh = true; S.reports.push(r); }
+      refresh();
+      emit(type, ex || r, true); // الوكلاء يسمعون التغيير اللي جا من جهاز ثاني
+    };
+  }
 
   renderStatic();
 })();

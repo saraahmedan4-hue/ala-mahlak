@@ -19,7 +19,7 @@
       <div class="mv-labels" aria-hidden="true">${(M.labels || []).map((l) => `<span data-x="${l.x}" data-y="${l.y}" data-a="${l.a}" data-ar="${l.ar}" data-en="${l.en}">${l.ar}</span>`).join('')}</div>
       <div class="mv-markers"></div>
       <div class="mv-ctrl"><button type="button" class="mv-btn" data-z="1" aria-label="+"><svg class="ic"><use href="#i-plus"/></svg></button><button type="button" class="mv-btn" data-z="-1" aria-label="−"><svg class="ic"><use href="#i-dash"/></svg></button></div>
-      <span class="mv-attr" lang="en" dir="ltr">© OpenStreetMap</span>`;
+      <span class="mv-attr" lang="en" dir="ltr">© OpenStreetMap contributors</span>`;
     const stage = el.querySelector('.mv-stage'), svg = el.querySelector('svg'), world = el.querySelector('.mv-world');
     const routes = el.querySelector('.mv-routes'), stat = el.querySelector('.mv-static'), mk = el.querySelector('.mv-markers');
     const labs = [...el.querySelectorAll('.mv-labels span')];
