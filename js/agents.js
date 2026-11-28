@@ -15,10 +15,11 @@
 
   /* ---------- 1) الإعدادات: هنا بس نغيّر لما يجهز الوسيط ---------- */
   const CONFIG = {
-    // الوسيط: Supabase Edge Function باسم llm (الكود في supabase/functions/llm/index.ts)
-    proxyUrl: 'https://wdfpufpvmxhkupiykcrb.supabase.co/functions/v1/llm',
-    // المفتاح العام (publishable) عادي يكون في الكود. مفتاح النموذج في أسرار Supabase بس.
-    anonKey: 'sb_publishable_5MHyh6W8AxnLGBdCx4ccGQ_tluMrbgI',
+    // الوسيط: Supabase Edge Function في مشروع لين (ala-mahlak-ai). الكود في supabase/functions/llm/index.ts
+    // ملاحظة: اسم الدالة llm بس عنوانها smooth-function، وهذا اللي يُستخدم.
+    proxyUrl: 'https://elxqopzhunqjdgojugfa.supabase.co/functions/v1/smooth-function',
+    // المفتاح العام (publishable) لمشروع لين. عادي يكون في الكود. مفتاح النموذج في أسرار Supabase بس.
+    anonKey: '',
     timeoutMs: 6000,   // لو الرد تأخر أكثر من كذا نكمل بالقواعد
     llmOff: false      // زر «اقطع النموذج» في العرض يخليها true
   };
