@@ -30,14 +30,14 @@
   /* الدرجة من جاهزية المكان نفسه: 5 أشياء (مصعد، منحدر، مدخل، دورة مياه، مواقف)، كل وحدة 2 من 10
      شغال = 2 · عليه بلاغ ينتظر = 1 · عطل مؤكد = 0 · ما فيه أصلاً = 0.6
      ثم ينقص شوي لتكرار البلاغ (0.3 لكل تكرار) وسجل الأعطال (0.1 لكل عطل، بحد أقصى 0.5) */
-  function score(pid) {
-    let s = 0;
+  function score(pid, skipId) { // skipId: الدرجة لو هالبلاغ ما كان موجود
+    let s = 0; const all = skipId ? S.reports.filter((r) => r.id !== skipId) : S.reports;
     FEATS.forEach((f) => {
       if (place(pid).feats[f] === 'none') { s += 0.6; return; }
-      const rs = S.reports.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
+      const rs = all.filter((r) => r.place === pid && issueFeat[r.issue] === f && r.status !== 'forwarded');
       s += !rs.length ? 2 : rs.some((r) => r.status === 'confirmed') ? 0 : 1;
     });
-    S.reports.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
+    all.forEach((r) => { if (r.place !== pid || r.status === 'forwarded') return; s -= Math.max(0, (r.merged || 1) - 1) * 0.3; if (!issueFeat[r.issue]) s -= 0.5; });
     s -= Math.min(0.5, place(pid).faults90 * 0.1);
     return Math.max(0, Math.min(10, Math.round(s * 10) / 10));
   }
@@ -310,14 +310,16 @@
   }
   function stamp() { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   /* أي بلاغ جديد: لو نفس المكان ونفس العطل موجود، يندمج معه */
-  function addReport(rep, silent) {
-    if (!silent && window.RT && !RT.allow()) { toast(t('tooMany')); return; } // حد البلاغات
+  function addReport(rep, silent, remote) {
+    if (!silent && !remote && window.RT && !RT.allow()) { toast(t('tooMany')); return; } // حد البلاغات (أميرة)
     const ex = rep.issue !== 'other' && S.reports.find((r) => r.place === rep.place && r.issue === rep.issue && r.status !== 'forwarded');
-    let saved;
-    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; saved = ex; }
-    else { saved = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: window.RT ? RT.id() : 'u' + (S.reports.length + 1), time: stamp(), fresh: true }); S.reports.push(saved); }
-    window.RT && RT.save(saved); // ربط لحظي
+    let out;
+    if (ex) { ex.merged = (ex.merged || 1) + 1; ex.time = stamp(); ex.fresh = true; if (rep.note) ex.note = rep.note; if (ex.severity === 'medium') ex.severity = 'high'; S.lastUp = ex.place; out = ex; }
+    else { out = Object.assign({ merged: 1, checks: ['presence'], status: 'pending' }, rep, { id: rep.id || (window.RT ? RT.id() : 'u' + (S.reports.length + 1)), time: stamp(), fresh: true }); S.reports.push(out); }
+    if (!remote && window.RT) RT.save(out); // ربط لحظي (أميرة). البلاغ اللي جا من جهاز ثاني ما نرجع نحفظه
     if (!silent) toast(t('sent'));
+    emit(ex ? 'merge' : 'add', out, remote);
+    return out;
   }
 
   $('#panel').addEventListener('input', (e) => { if (e.target.id === 'q') { S.u.q = e.target.value; S.u.focusQ = true; renderUser(false); } });
@@ -333,7 +335,7 @@
     else if (a === 'next') goStep(S.u.i + 1, true);
     else if (a === 'yes') { // ✦ تأكيد من الميدان: البلاغ يصير مؤكد ويقوى
       const f = S.reports.find((r) => r.demo && r.status !== 'forwarded');
-      if (f) { f.status = 'confirmed'; f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); window.RT && RT.save(f); }
+      if (f) { f.merged = Math.max(2, f.merged || 1); f.fresh = true; f.confirmedByRider = true; if (!f.checks.includes('presence')) f.checks.unshift('presence'); window.RT && RT.save(f); }
       toast(t('thanksConfirm')); goStep(S.u.i + 1, true);
     }
     else if (a === 'no') goStep(S.u.i + 1, true);
@@ -395,7 +397,7 @@
   function strengthChip(r) {
     const n = r.merged || 1, lv = n >= 4 ? 3 : n >= 2 ? 2 : 1;
     const merged = lv > 1 && !S.mergeShown && r.id === 'r1' ? 1 : lv; // قبل حركة الدمج الأولى
-    return `<span class="chip ai${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
+    return `<span class="chip str${r.fresh && lv > 1 ? ' grow' : ''}" title="${t('strTitle')}">${icon('i-spark')}<span class="dots" aria-hidden="true">${[1, 2, 3].map((k) => `<i class="${k <= merged ? 'on' : ''}"></i>`).join('')}</span>${t('str' + merged)}</span>`;
   }
   function aiSummary() {
     const by = {}; S.reports.forEach((r) => { by[r.issue] = (by[r.issue] || 0) + 1; });
@@ -420,32 +422,35 @@
       <div class="kpi"><span>${t('kpiWorst')}</span><b class="kpi-place">${L(worst.name)}</b><em>${score(worst.id).toFixed(1)}<small>/10</small></em></div>
       <div class="kpi ai-card">${icon('i-spark', 'ic ai-ic')}<div><span>${t('aiTitle')}</span>${aiSummary().map((l) => `<p>${l}</p>`).join('')}</div></div>`;
   }
+  /* بطاقة الهيئة (نفس التصميم لكل البلاغات): المكان + الحالة + الموثوقية + زرين (تأكيد · حوّل) */
   function rowHTML(r, dup) {
-    const [tone, ic] = stChip[r.status], open = S.open[r.id] && !dup;
+    const [tone, ic] = stChip[r.status];
     const canApprove = r.status === 'pending' || r.status === 'temporary', canForward = r.status !== 'forwarded';
-    const isNew = !!r.fresh;
-    return `<li class="row${isNew ? ' is-new' : ''}${dup ? ' dup' : ''}${open ? ' open' : ''}" data-id="${r.id}">
-      <button class="row-main" type="button" aria-expanded="${!!open}" data-toggle="${r.id}">
-        <span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
-        <span class="row-txt"><b>${L(r.title)}</b><span>${L(place(r.place).name)} · ${r.time}</span></span>
-        <span class="row-chips">${isNew ? `<span class="chip new">${t('newBadge')}</span>` : ''}${strengthChip(r)}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span></span>
-      </button>
-      <div class="row-act">${canApprove ? `<button class="btn btn-primary btn-sm" data-act-r="approve" data-id="${r.id}" type="button">${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost btn-sm" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>
-      ${open ? `<div class="row-more">
-        <ul class="checks">${r.checks.map((c) => `<li>${t('ck_' + c)}</li>`).join('')}</ul>
-        <p><span class="muted">${t('authority')}:</span> <b>${L(D.authorities[r.authority])}</b> · <span class="muted">${t('sev_' + r.severity)}</span></p>
-        ${r.status === 'temporary' ? `<p class="muted">${t('expires', { h: r.expires })}</p>` : ''}
-        ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}${r.draft ? spark(`<b>${t('draft')}:</b> ${L(r.draft)}`) : ''}</div>` : ''}
+    const s = score(r.place), lv = level(s), was = score(r.place, r.id);
+    const aiText = r.draft ? L(r.draft) + (r.confirmedByRider ? ' ' + t('riderConfirmed') : '') : '';
+    return `<li class="rcard${r.fresh ? ' is-new' : ''}${S.sel === r.id ? ' sel' : ''}${dup ? ' dup' : ''}" data-id="${r.id}" data-place="${r.place}">
+      <div class="rc-head"><span class="row-ic sev-${r.severity}">${icon(issueIc[r.issue])}</span>
+        <div><h3>${L(r.title)}</h3><p>${icon('i-pin')}${L(place(r.place).name)} · ${r.time}</p></div></div>
+      <div class="chips">${r.fresh ? `<span class="chip new">${t('newBadge')}</span>` : ''}<span class="chip ${tone}">${icon(ic)}${t('st_' + r.status)}</span>${strengthChip(r)}</div>
+      <div class="rc-rel"><span class="rc-score">${s.toFixed(1)}<small>/10</small></span><span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>${was !== s ? `<span class="rc-was">${t('wasShort', { n: was.toFixed(1) })}</span>` : ''}</div>
+      ${r.note ? `<p class="note-view">«${r.note.replace(/</g, '&lt;')}»</p>` : ''}
+      ${aiText ? `<p class="rc-ai">${icon('i-spark')}<span>${aiText}</span></p>` : ''}
+      ${r.status === 'temporary' ? `<p class="rc-exp">${t('expires', { h: r.expires })}</p>` : ''}
+      ${canApprove || canForward ? `<div class="rc-btns${canApprove ? '' : ' one'}">${canApprove ? `<button class="btn btn-ok" data-act-r="approve" data-id="${r.id}" type="button">${icon('i-check')}${t('approve')}</button>` : ''}${canForward ? `<button class="btn btn-ghost" data-act-r="forward" data-id="${r.id}" type="button">${icon('i-arrow', 'ic flip')}${t('forwardTo', { a: L(D.authorities[r.authority]) })}</button>` : ''}</div>` : ''}
     </li>`;
   }
+  const FILTERS = { all: () => true, new: (r) => r.fresh || r.status === 'pending' || r.status === 'temporary', confirmed: (r) => r.status === 'confirmed' };
   function renderRows() {
     const sev = { high: 0, medium: 1 };
     const list = S.reports.slice().sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || sev[a.severity] - sev[b.severity] || b.time.localeCompare(a.time));
-    $('#rows').innerHTML = list.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown ? rowHTML(r, true) : '')).join('');
+    const f = FILTERS[S.gFilter || 'all'], shown = list.filter(f);
+    $('#rows').innerHTML = shown.map((r) => rowHTML(r) + (r.id === 'r1' && !S.mergeShown && f(r) ? rowHTML(r, true) : '')).join('') || `<li class="rc-empty">${t('noReports')}</li>`;
     $('#repCount').textContent = S.reports.length;
+    $('#filters').innerHTML = Object.keys(FILTERS).map((k) => `<button type="button" data-filter="${k}" aria-pressed="${(S.gFilter || 'all') === k}">${t('flt_' + k)}</button>`).join('');
+    $('#govTabs').innerHTML = ['list', 'map'].map((k) => `<button type="button" data-gtab="${k}" aria-pressed="${(S.gTab || 'list') === k}">${k === 'list' ? `${t('reports')} (${S.reports.length})` : t('mapTab')}</button>`).join('');
   }
   function govMarkers() {
-    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv, label: `${L(p.name)} ${s.toFixed(1)}/10`,
+    govMap.setMarkers(D.places.map((p) => { const s = score(p.id), lv = level(s); return { lat: p.lat, lng: p.lng, cls: 'score p-' + p.id + ' lab-' + p.lab + ' ' + lv + (S.sel && (S.reports.find((r) => r.id === S.sel) || {}).place === p.id ? ' sel' : ''), onClick: () => selectPlace(p.id), label: `${L(p.name)} ${s.toFixed(1)}/10`,
       html: `<span class="sc">${s.toFixed(1)}</span><span class="pin-name">${L(p.name)}</span>` }; }));
     $('#legend').innerHTML = ['high', 'medium', 'low'].map((lv) => `<span class="level ${lv}">${dots(lv)}${t('lvlS_' + lv)}</span>`).join('');
   }
@@ -457,15 +462,25 @@
       setTimeout(() => { S.mergeShown = true; if (S.view === 'gov') renderRows(); }, reduce() ? 0 : 600);
     }, 1400);
   }
+  function selectPlace(pid) { // من الخريطة: يختار أول بلاغ للمكان ويوريه
+    const r = S.reports.find((x) => x.place === pid); if (!r) return;
+    S.sel = r.id; if (!FILTERS[S.gFilter || 'all'](r)) S.gFilter = 'all'; S.gTab = 'list'; $('#govGrid').dataset.tab = 'list';
+    renderRows(); govMarkers(); const c = $(`#rows [data-id="${r.id}"]`); if (c) c.scrollIntoView({ block: 'nearest', behavior: reduce() ? 'auto' : 'smooth' });
+  }
+  document.addEventListener('click', (e) => {
+    const fl = e.target.closest('[data-filter]'); if (fl) { S.gFilter = fl.dataset.filter; renderRows(); return; }
+    const gt = e.target.closest('[data-gtab]'); if (gt) { S.gTab = gt.dataset.gtab; $('#govGrid').dataset.tab = S.gTab; renderRows(); return; }
+  });
   $('#rows').addEventListener('click', (e) => {
     const a = e.target.closest('[data-act-r]');
     if (a) {
       const r = S.reports.find((x) => x.id === a.dataset.id); if (!r) return;
       r.status = a.dataset.actR === 'approve' ? 'confirmed' : 'forwarded'; r.fresh = false;
-      window.RT && RT.save(r); // ربط لحظي
+      window.RT && RT.save(r); // ربط لحظي (أميرة)
+      emit('status', r);       // للملفات الثانية (سارة)
       renderGov(false); return;
     }
-    const tg = e.target.closest('[data-toggle]'); if (tg) { S.open[tg.dataset.toggle] = !S.open[tg.dataset.toggle]; renderRows(); }
+    const c = e.target.closest('.rcard'); if (c && !c.classList.contains('dup')) { S.sel = c.dataset.id; renderRows(); govMarkers(); }
   });
 
   /* ===== أزرار عامة ===== */
@@ -477,18 +492,33 @@
     if (a.dataset.act === 'theme') { S.theme = S.theme === 'dark' ? 'light' : 'dark'; renderStatic(); }
   });
 
+  /* ===== واجهة مشتركة للملفات الثانية (المزامنة، الوكلاء) =====
+     window.AlaMahlak.state       ← حالة التطبيق (البلاغات، الأماكن، الواجهة المفتوحة)
+     window.AlaMahlak.addReport() ← يضيف بلاغ (ويدمجه لو مكرر) ويحدّث الشاشة
+     window.AlaMahlak.refresh()   ← يعيد رسم الواجهة المفتوحة
+     window.AlaMahlak.onChange(fn) ← fn({ type: 'add'|'merge'|'status', report, remote, state }) مع كل تغيير */
+  const listeners = [];
+  function emit(type, report, remote) { listeners.forEach((fn) => { try { fn({ type, report, remote: !!remote, state: S }); } catch (e) { console.error(e); } }); }
+  function refresh() { if (S.view === 'gov') renderGov(false); else if (S.view === 'user' && S.u.mode !== 'trip') renderUser(true); }
+  window.AlaMahlak = Object.freeze({
+    get state() { return S; },
+    places: D.places,
+    score, level,
+    addReport(rep, opts = {}) { const r = addReport(rep, opts.silent !== false, opts.remote); refresh(); return r; },
+    refresh,
+    onChange(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; }
+  });
+
   /* ===== الربط اللحظي (js/realtime.js) ===== */
-  function refresh() {
-    if (S.view === 'gov') renderGov(false);
-    else if (S.view === 'user' && S.u.mode !== 'trip') renderUser(false);
-  }
   if (window.RT) {
     RT.onLoad = (list) => { list.forEach((r) => { if (r.demo) r.draft = D.demoFault.draft; }); S.reports = list; S.mergeShown = true; refresh(); };
     RT.onChange = (r) => {
       const ex = S.reports.find((x) => x.id === r.id);
-      if (ex) { const grew = (r.merged || 1) > (ex.merged || 1); Object.assign(ex, r); if (grew) { ex.fresh = true; S.lastUp = ex.place; } }
+      let type = 'add', grew = false;
+      if (ex) { grew = (r.merged || 1) > (ex.merged || 1); Object.assign(ex, r); type = grew ? 'merge' : 'status'; if (grew) { ex.fresh = true; S.lastUp = ex.place; } }
       else { if (r.demo) r.draft = D.demoFault.draft; r.fresh = true; S.reports.push(r); }
       refresh();
+      emit(type, ex || r, true); // الوكلاء يسمعون التغيير اللي جا من جهاز ثاني
     };
   }
 
